@@ -1,0 +1,15 @@
+# Envie apenas as entradas do build Maven.
+**
+!pom.xml
+!src/
+!src/**
+
+# Exclua credenciais e artefatos locais mesmo dentro de src.
+**/.env
+**/.env.*
+**/*.jar
+**/*.mv.db
+**/*.trace.db
+**/*.log
+**/*.tmp
+**/*.temp
