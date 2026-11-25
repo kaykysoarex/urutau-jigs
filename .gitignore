@@ -15,6 +15,12 @@
 # Logs
 *.log
 
+# Arquivos temporários
+/tmp/
+/work/
+*.tmp
+*.temp
+
 # IDEs
 .idea/
 .vscode/
