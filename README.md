@@ -40,7 +40,15 @@ CREATE DATABASE urutau_jigs CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 
 O endereço padrão é somente local. Para acesso compartilhado, publique a aplicação atrás de um proxy HTTPS, mantenha o serviço de aplicação acessível apenas ao proxy e configure `SESSION_COOKIE_SECURE=true`. Defina `SERVER_ADDRESS` se o proxy precisar acessar uma interface diferente de loopback. Habilite `FORWARD_HEADERS_STRATEGY=framework` quando o proxy confiável fizer a terminação TLS e filtrar cabeçalhos encaminhados. Use backups do banco para preservar catálogo, preços e histórico.
 
-As contas são configuradas por variáveis de ambiente. Na inicialização, o Spring Security transforma as senhas em hashes BCrypt em memória. Os formulários usam sessão e proteção CSRF. A aplicação valida os dois acessos antes de iniciar.
+As contas são configuradas por variáveis de ambiente. A aplicação valida os dois acessos na inicialização e usa hashes BCrypt com salt para detectar mudanças nas credenciais. Os formulários usam sessão e proteção CSRF.
+
+### Autenticação persistente
+
+O Spring Security ativa a autenticação persistente no primeiro login após a atualização. O banco guarda o identificador e o hash do token. O cookie é `HttpOnly` e `SameSite=Lax`, com `Secure` no Railway. Ao voltar pelo mesmo navegador e endereço com um cookie válido, o sistema recria a sessão e abre o painel. Isso funciona após fechar o navegador, reiniciar o dispositivo ou publicar um novo deploy com o mesmo banco.
+
+A validade padrão é **90 dias**, renovada a cada autenticação automática. Para personalizar, defina `REMEMBER_ME_DAYS` com um inteiro positivo no `.env` local ou nas variáveis do serviço no Railway.
+
+Ao selecionar **Sair**, a aplicação encerra a sessão e revoga os tokens persistentes daquela conta. Alterar o nome de acesso ou a senha em `ADMIN_1_*` ou `ADMIN_2_*` também revoga os tokens da conta correspondente na próxima inicialização. O Flyway adiciona as tabelas de autenticação ao H2 local ou ao MySQL, preservando os registros comerciais. A funcionalidade usa as credenciais do banco e as variáveis administrativas já configuradas.
 
 ## Publicar no Railway
 
@@ -62,7 +70,7 @@ As contas são configuradas por variáveis de ambiente. Na inicialização, o Sp
    GEMINI_API_KEY=SUBSTITUA_CHAVE_GEMINI
    ```
 
-   As expressões `${{MySQL.NOME_DA_VARIAVEL}}` são referências do Railway e devem ser coladas como estão. `GEMINI_MODEL` é opcional e usa `gemini-3.5-flash-lite` quando vazio. Para escolher outro provedor, siga a seção [Provedor alternativo](#provedor-alternativo).
+   As expressões `${{MySQL.NOME_DA_VARIAVEL}}` são referências do Railway e devem ser coladas como estão. Para personalizar a validade da autenticação persistente, inclua `REMEMBER_ME_DAYS` nas variáveis do serviço. `GEMINI_MODEL` é opcional e usa `gemini-3.5-flash-lite` quando vazio. Para escolher outro provedor, siga a seção [Provedor alternativo](#provedor-alternativo).
 
 4. Em **Settings → Source → Connect Repo**, conecte `kaykysoarex/urutau-jigs`. Se o GitHub solicitar a instalação do aplicativo Railway, conceda acesso ao repositório oficial. Selecione `main` como branch de deploy e mantenha **Autodeploy** habilitado. Deixe o **Root Directory** na raiz do repositório e **Wait for CI** desabilitado. O Railway detecta o `Dockerfile` na raiz e a construção da imagem executa os testes Maven. Deixe o **Start Command** no padrão da imagem. Cada push na `main` aciona um novo deploy. [Repositório oficial](https://github.com/kaykysoarex/urutau-jigs) · [Autodeploy pelo GitHub](https://docs.railway.com/deployments/github-autodeploys) · [Detecção do Dockerfile](https://docs.railway.com/builds/dockerfiles)
 
@@ -73,7 +81,7 @@ As contas são configuradas por variáveis de ambiente. Na inicialização, o Sp
 3. No serviço `urutau-jigs`, abra **Settings → Networking → Public Networking → Generate Domain**. Use a porta detectada pelo Railway e abra o domínio gerado com `https://`. O Railway emite o certificado e termina o TLS na borda. O perfil da aplicação respeita o cabeçalho de protocolo encaminhado e ativa o atributo `Secure` do cookie de sessão. [HTTPS e domínio público](https://docs.railway.com/networking/public-networking) · [Cabeçalhos do proxy](https://docs.railway.com/networking/public-networking/specs-and-limits)
 4. Teste o login com as duas contas e abra o catálogo. Para conferir o Gemini, envie uma mensagem livre de teste na **URUTAU AI**, como `Quero três Spinner de 12g na cor 03`.
 
-Mantenha uma réplica da aplicação, pois as sessões administrativas e as conversas em andamento ficam em memória. Os dados gravados no MySQL persistem após novos deploys. O arquivo H2 local, seus clientes, tabelas de preço e orçamentos permanecem na instalação local. Uma eventual migração desses registros exige uma transferência separada.
+Mantenha uma réplica da aplicação, pois as sessões administrativas e as conversas em andamento ficam em memória. Após um novo deploy, a autenticação persistente abre uma nova sessão. Os dados gravados no MySQL persistem após novos deploys. O arquivo H2 local, seus clientes, tabelas de preço e orçamentos permanecem na instalação local. Uma eventual migração desses registros exige uma transferência separada.
 
 ## Catálogo e preços
 
