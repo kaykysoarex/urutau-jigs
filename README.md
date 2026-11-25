@@ -23,12 +23,12 @@ O JAR distribuído requer Java 21. Para compilar o código-fonte, instale també
            [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2], 'Process')
        }
    }
-   java -jar ..\urutau-jigs-0.1.4.jar
+   java -jar ..\urutau-jigs-0.1.5.jar
    ```
 
 3. Abra [o painel local](http://127.0.0.1:8080/) e entre com uma das contas. Preencha os valores oficiais em **Tabela de preços** antes de emitir. O H2 guarda os registros em `data/` da pasta onde a aplicação foi iniciada.
 
-Use `mvn spring-boot:run` para executar pelo código-fonte. Use `mvn clean verify` para executar os testes e gerar o JAR em `target/urutau-jigs-0.1.4.jar`. Em Linux, exporte as mesmas variáveis no ambiente do processo e execute o JAR com Java 21.
+Use `mvn spring-boot:run` para executar pelo código-fonte. Use `mvn clean verify` para executar os testes e gerar o JAR em `target/urutau-jigs-0.1.5.jar`. Em Linux, exporte as mesmas variáveis no ambiente do processo e execute o JAR com Java 21.
 
 ## Banco de dados e acesso compartilhado
 
@@ -101,6 +101,15 @@ Confira os contadores de cores e unidades e clique em **Adicionar ao orçamento*
 
 Com pelo menos um item no orçamento manual ou revisado pela URUTAU AI, clique em **Pré-visualizar PDF** para abrir ou baixar o rascunho. Os campos monetários sem valor aparecem como **A definir**. A identificação **PRÉVIA — SEM VALIDADE COMERCIAL** aparece em todas as páginas. O rascunho não é gravado no histórico e não recebe número oficial. Para **Emitir orçamento**, cadastre todos os preços da tabela aplicada e informe o nome do cliente.
 
+## Compartilhar um orçamento pelo WhatsApp
+
+Depois de emitir o orçamento, use **Compartilhar pelo WhatsApp** na confirmação, em **Meus orçamentos** ou na visualização do PDF emitido. Revise o texto e use **Copiar mensagem** se quiser colá-lo na conversa.
+
+- Em navegadores com suporte ao compartilhamento de arquivos, selecione **Abrir menu de compartilhamento** e escolha o WhatsApp e o contato. O sistema prepara o PDF definitivo com o nome original. Se o aplicativo abrir apenas o arquivo, cole a mensagem copiada na conversa. [Web Share API](https://www.w3.org/TR/web-share/)
+- Nos demais navegadores, selecione **Baixar PDF** e **Abrir WhatsApp Web**. O texto editado é preenchido na conversa do telefone salvo, quando ele possui formato válido. Para números fora do Brasil, use o prefixo `+` seguido do código do país. Se não houver um número utilizável, escolha o contato no WhatsApp. Anexe o PDF manualmente e confirme o envio. [Clique para conversa no WhatsApp](https://faq.whatsapp.com/5913398998672934/?locale=pt_BR)
+
+O sistema compartilha somente PDFs emitidos e protegidos pelo login. O compartilhamento conserva a numeração, os valores e o status do orçamento. Ele dispensa serviços externos de automação, chaves adicionais e mudanças na configuração do Railway.
+
 ## URUTAU AI
 
 Cole o pedido completo do catálogo oficial, incluindo o cabeçalho e o total, ou somente as linhas do pedido. O back-end lê o formato `• Jig Peixinho | 12g | Cor 05 | Qtd: 5`, valida as combinações ativas no banco, soma os itens e compara com o total declarado, quando presente. Um pedido estruturado e validado funciona mesmo sem uma chave de IA. As quantidades reconhecidas aparecem para revisão no mesmo formulário de orçamento. [Formato gerado pelo catálogo oficial](https://catalogo-urutau.vercel.app/script.js)
@@ -118,7 +127,7 @@ O provedor de IA interpreta mensagens livres e ajuda a esclarecer trechos ambíg
    GEMINI_MODEL=gemini-3.5-flash-lite
    ```
 
-3. Pare a execução anterior. Na mesma pasta `urutau-jigs`, recarregue o `.env` com o trecho de PowerShell da seção de instalação e execute `java -jar ..\urutau-jigs-0.1.4.jar`. A mesma pasta de trabalho mantém o acesso a `data/urutau.mv.db` quando o H2 padrão estiver em uso. Abra **URUTAU AI** e envie um pedido de teste como `3 Spinner 12g cor 03`.
+3. Pare a execução anterior. Na mesma pasta `urutau-jigs`, recarregue o `.env` com o trecho de PowerShell da seção de instalação e execute `java -jar ..\urutau-jigs-0.1.5.jar`. A mesma pasta de trabalho mantém o acesso a `data/urutau.mv.db` quando o H2 padrão estiver em uso. Abra **URUTAU AI** e envie um pedido de teste como `3 Spinner 12g cor 03`.
 
 O modelo padrão, inclusive com `GEMINI_MODEL` em branco, é o Gemini 3.5 Flash-Lite estável. O back-end usa a operação oficial `generateContent` com Structured Outputs. Os limites de uso dependem do projeto no Google. Se a cota acabar ou o serviço falhar, a interface informa o erro e o gerador manual continua disponível. [Modelo e modalidade gratuita](https://aistudio.google.com/docs/models/gemini-3.5-flash-lite#pricing) · [Limites de uso](https://aistudio.google.com/docs/rate-limits)
 
@@ -151,14 +160,15 @@ As sugestões são validadas contra o catálogo e encaminhadas ao formulário ma
 
 `mvn test` usa um banco H2 isolado e valores comerciais de teste. O conjunto cobre acesso administrativo, classificação abaixo e acima do mínimo, combinações e quantidades inválidas, preços pendentes, alteração de preços e preservação de orçamentos emitidos, paginação de PDFs e fluxos de interpretação com respostas de IA controladas.
 
-Os testes de navegador executam o JAR gerado por `mvn clean verify` com um H2 descartável. Eles verificam a seleção em lote, as quantidades por cor, a soma de combinações repetidas, a classificação comercial, a prévia do PDF e o uso por toque. Com Python instalado, execute os comandos abaixo na raiz do projeto.
+Os testes de navegador executam o JAR gerado por `mvn clean verify` com um H2 descartável. Eles verificam o gerador manual em telas grandes e pequenas, a prévia do PDF e os fluxos de compartilhamento nativo e pelo WhatsApp Web. A suíte simula o menu do sistema e os acessos ao WhatsApp. Com Python instalado, execute os comandos abaixo na raiz do projeto.
 
 ```powershell
 python -m pip install -r src/test/browser/requirements.txt
 python -m playwright install chromium
-python src/test/browser/test_bulk_colors.py target/urutau-jigs-0.1.4.jar
+python src/test/browser/test_bulk_colors.py target/urutau-jigs-0.1.5.jar
+python src/test/browser/test_whatsapp_share.py target/urutau-jigs-0.1.5.jar
 ```
 
-Se já tiver Chrome ou Edge instalado, use `--channel chrome` ou `--channel msedge` no último comando e dispense a instalação do Chromium pelo Playwright.
+Se já tiver Chrome ou Edge instalado, use `--channel chrome` ou `--channel msedge` nos comandos de teste e dispense a instalação do Chromium pelo Playwright.
 
 O PDF usa fontes comerciais compatíveis com português brasileiro. Caracteres fora do repertório Windows-1252 são substituídos por `?` no documento.
