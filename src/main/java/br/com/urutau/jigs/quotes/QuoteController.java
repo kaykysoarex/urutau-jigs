@@ -6,6 +6,7 @@ import br.com.urutau.jigs.quotes.QuoteDtos.IssueRequest;
 import br.com.urutau.jigs.quotes.QuoteDtos.PdfPreviewRequest;
 import br.com.urutau.jigs.quotes.QuoteDtos.Preview;
 import br.com.urutau.jigs.quotes.QuoteDtos.PreviewRequest;
+import br.com.urutau.jigs.quotes.QuoteDtos.ShareDetails;
 import br.com.urutau.jigs.quotes.QuoteDtos.Summary;
 import jakarta.validation.Valid;
 import java.net.URI;
@@ -62,6 +63,11 @@ class QuoteController {
     @GetMapping
     History history(@RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
         return quotes.history(page, size);
+    }
+
+    @GetMapping("/{number:\\d+}")
+    ResponseEntity<ShareDetails> shareDetails(@PathVariable long number) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(quotes.shareDetails(number));
     }
 
     @GetMapping("/{number}/pdf")

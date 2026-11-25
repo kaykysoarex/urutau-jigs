@@ -26,6 +26,8 @@ const state = {
   previewRevision: 0,
   pdfPreviewRequest: null,
   pdfPreviewUrl: null,
+  issuedViewer: null,
+  quoteShare: null,
   issueBusy: false,
   quoteAttempt: null,
   historyRevision: 0,
@@ -88,7 +90,11 @@ async function api(url, options = {}) {
     if (contentType?.split(";")[0].trim() !== "application/pdf") {
       throw new RequestError(response.status, "O sistema não retornou um PDF.");
     }
-    return response.blob();
+    const pdf = await response.blob();
+    if (!options.pdfName) return pdf;
+    const disposition = response.headers.get("Content-Disposition");
+    const filename = disposition?.match(/(?:^|;)\s*filename=(?:"([^"]+)"|([^;\s]+))/i);
+    return new File([pdf], filename?.[1] ?? filename?.[2] ?? options.pdfName, { type: "application/pdf" });
   }
   return data;
 }
@@ -127,12 +133,22 @@ function link(label, href, className = "text-link") {
   return anchor;
 }
 
+function issuedPdfPath(number, download = false) {
+  return `/api/quotes/${number}/pdf${download ? "?download=true" : ""}`;
+}
+
 function pdfLink(number, download, symbolOnly = false) {
   const label = download ? "Baixar PDF" : "Visualizar PDF";
-  const anchor = link(label, `/api/quotes/${number}/pdf${download ? "?download=true" : ""}`, symbolOnly ? "icon-button" : "text-link");
+  const anchor = link(label, issuedPdfPath(number, download), symbolOnly ? "icon-button" : "text-link");
   if (!download) {
     anchor.target = "_blank";
     anchor.rel = "noopener";
+    anchor.setAttribute("aria-haspopup", "dialog");
+    anchor.addEventListener("click", event => {
+      if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      void showIssuedPdf(number);
+    });
   }
   if (symbolOnly) {
     anchor.replaceChildren(icon(download ? "download" : "eye"));
@@ -140,6 +156,15 @@ function pdfLink(number, download, symbolOnly = false) {
     anchor.setAttribute("aria-label", `${label} do orçamento ${quoteNumber(number)}`);
   }
   return anchor;
+}
+
+function quoteShareButton(number, clientName) {
+  const button = element("button", "button whatsapp-button");
+  button.type = "button";
+  button.setAttribute("aria-haspopup", "dialog");
+  button.append(icon("whatsapp"), element("span", "", "Compartilhar pelo WhatsApp"));
+  button.addEventListener("click", () => openQuoteShare(number, clientName));
+  return button;
 }
 
 function emptyState(title, description, symbol, extra) {
@@ -217,6 +242,11 @@ function navigate() {
   state.route = route;
   const previewDialog = byId("preview-pdf-dialog");
   if (route.page !== "manual" && previewDialog.open) previewDialog.close();
+  if (pageChanged) {
+    for (const id of ["quote-share-dialog", "issued-pdf-dialog"]) {
+      if (byId(id).open) byId(id).close();
+    }
+  }
   document.title = `${route.title} | Urutau Jigs`;
   byId("breadcrumb-group").textContent = route.group;
   byId("breadcrumb-page").textContent = route.title;
@@ -615,6 +645,211 @@ async function showPdfPreview() {
   }
 }
 
+async function fetchIssuedPdf(number, signal) {
+  const file = await api(issuedPdfPath(number), {
+    pdf: true,
+    pdfName: `orcamento-urutau-${quoteNumber(number)}.pdf`,
+    signal
+  });
+  if (!file?.size) throw new Error("O sistema retornou um PDF vazio.");
+  return file;
+}
+
+function resetIssuedViewer() {
+  const viewer = state.issuedViewer;
+  if (!viewer) return;
+  viewer.request.abort();
+  byId("issued-pdf-frame").removeAttribute("src");
+  if (viewer.url) URL.revokeObjectURL(viewer.url);
+  state.issuedViewer = null;
+}
+
+async function showIssuedPdf(number) {
+  const dialog = byId("issued-pdf-dialog");
+  if (dialog.open) return;
+  resetIssuedViewer();
+  const viewer = { number, request: new AbortController(), file: null, url: null };
+  state.issuedViewer = viewer;
+  byId("issued-pdf-title").textContent = `Orçamento nº ${quoteNumber(number)}`;
+  byId("issued-pdf-open").href = issuedPdfPath(number);
+  byId("issued-pdf-download").href = issuedPdfPath(number, true);
+  const frame = byId("issued-pdf-frame");
+  frame.hidden = true;
+  const status = byId("issued-pdf-status");
+  status.classList.remove("form-error");
+  status.textContent = "Carregando PDF do orçamento…";
+  status.hidden = false;
+  dialog.showModal();
+  try {
+    const file = await fetchIssuedPdf(number, viewer.request.signal);
+    if (state.issuedViewer !== viewer || !dialog.open) return;
+    viewer.file = file;
+    viewer.url = URL.createObjectURL(file);
+    frame.src = viewer.url;
+    frame.hidden = false;
+    status.hidden = true;
+  } catch {
+    if (state.issuedViewer !== viewer || !dialog.open) return;
+    status.classList.add("form-error");
+    status.textContent = "Não foi possível carregar o PDF aqui. Tente visualizar em nova aba ou baixar o arquivo.";
+  }
+}
+
+function quoteShareMessage(clientName) {
+  const name = clientName?.trim();
+  const greeting = name ? `Olá, ${name}! Tudo bem?` : "Olá! Tudo bem?";
+  return `${greeting}\n\nSegue o orçamento solicitado das iscas artesanais URUTAU JIGS.\n\nQualquer dúvida, estamos à disposição.\n\nObrigado pela preferência!\nURUTAU JIGS`;
+}
+
+function whatsappPhone(value) {
+  const phone = value?.trim() ?? "";
+  if (!/^\+?[\d().\s-]+$/u.test(phone)) return "";
+  const digits = phone.replace(/\D/g, "");
+  const nationalNumber = /^[1-9]{2}(?:[2-5]\d{7}|9\d{8})$/u;
+  if (!phone.startsWith("+") && nationalNumber.test(digits)) return `55${digits}`;
+  const international = digits.startsWith("00") ? digits.slice(2) : digits;
+  if (international.startsWith("55")) return nationalNumber.test(international.slice(2)) ? international : "";
+  return (phone.startsWith("+") || digits.startsWith("00")) && /^[1-9]\d{7,14}$/u.test(international) ? international : "";
+}
+
+function shareStatus(message, isError = false) {
+  const status = byId("quote-share-status");
+  status.classList.toggle("form-error", isError);
+  status.textContent = message;
+}
+
+function updateWhatsappLink(share) {
+  const url = new URL(`https://wa.me/${share.phone}`);
+  url.searchParams.set("text", byId("quote-share-message").value);
+  byId("quote-share-whatsapp").href = url.href;
+}
+
+function showWhatsappFallback(share) {
+  byId("quote-share-recipient").textContent = share.phone
+    ? "Confira se a conversa aberta corresponde ao telefone do orçamento."
+    : "Escolha o destinatário no WhatsApp.";
+  byId("quote-share-fallback").hidden = false;
+  updateWhatsappLink(share);
+}
+
+function canShareQuoteFile(file) {
+  try {
+    return !!file && typeof navigator.share === "function" && navigator.canShare?.({ files: [file] }) === true;
+  } catch {
+    return false;
+  }
+}
+
+function resetQuoteShare() {
+  state.quoteShare?.request.abort();
+  state.quoteShare = null;
+  byId("quote-share-message").value = "";
+  byId("quote-share-whatsapp").removeAttribute("href");
+  byId("quote-share-recipient").textContent = "";
+}
+
+function openQuoteShare(number, clientName, file = null) {
+  const dialog = byId("quote-share-dialog");
+  if (dialog.open) return;
+  resetQuoteShare();
+  const share = { number, clientName, file, request: new AbortController(), phone: "", edited: false };
+  state.quoteShare = share;
+  byId("quote-share-title").textContent = `Compartilhar orçamento nº ${quoteNumber(number)}`;
+  byId("quote-share-message").value = quoteShareMessage(clientName);
+  byId("quote-share-download").href = issuedPdfPath(number, true);
+  void prepareQuoteShare(share);
+  dialog.showModal();
+}
+
+async function prepareQuoteShare(share) {
+  const message = byId("quote-share-message");
+  const native = byId("quote-share-native");
+  const retry = byId("quote-share-retry");
+  native.hidden = true;
+  native.disabled = true;
+  retry.hidden = true;
+  byId("quote-share-fallback").hidden = true;
+  message.disabled = true;
+  byId("quote-share-copy").disabled = true;
+  shareStatus("Preparando PDF e mensagem…");
+  const signal = share.request.signal;
+  const [contact, pdf] = await Promise.allSettled([
+    api(`/api/quotes/${share.number}`, { signal }),
+    share.file ?? fetchIssuedPdf(share.number, signal)
+  ]);
+  if (!isCurrentQuoteShare(share)) return;
+  const errors = [];
+  if (contact.status === "fulfilled") {
+    share.phone = whatsappPhone(contact.value?.clientPhone);
+    if (!share.edited) message.value = quoteShareMessage(contact.value?.clientName);
+  } else {
+    errors.push("Não foi possível consultar os dados do cliente.");
+  }
+  if (pdf.status === "fulfilled") share.file = pdf.value;
+  else errors.push("Não foi possível preparar o PDF. Tente novamente ou baixe o arquivo.");
+  if (canShareQuoteFile(share.file)) {
+    native.hidden = false;
+    native.disabled = false;
+  } else {
+    showWhatsappFallback(share);
+  }
+  message.disabled = false;
+  byId("quote-share-copy").disabled = false;
+  retry.hidden = errors.length === 0;
+  shareStatus(errors.join(" "), errors.length > 0);
+}
+
+function isCurrentQuoteShare(share) {
+  return state.quoteShare === share && byId("quote-share-dialog").open;
+}
+
+async function shareQuoteNatively() {
+  const share = state.quoteShare;
+  const button = byId("quote-share-native");
+  if (!share?.file || button.disabled) return;
+  button.disabled = true;
+  shareStatus("");
+  try {
+    await navigator.share({
+      files: [share.file],
+      title: `Orçamento nº ${quoteNumber(share.number)}`,
+      text: byId("quote-share-message").value
+    });
+  } catch (error) {
+    if (!isCurrentQuoteShare(share)) return;
+    if (error.name === "AbortError") {
+      shareStatus("Compartilhamento cancelado ou sem aplicativos disponíveis.");
+      showWhatsappFallback(share);
+    } else {
+      button.hidden = true;
+      shareStatus("Não foi possível abrir o menu de compartilhamento. Use o WhatsApp Web e anexe o PDF manualmente.", true);
+      showWhatsappFallback(share);
+    }
+  } finally {
+    if (isCurrentQuoteShare(share)) button.disabled = button.hidden;
+  }
+}
+
+async function copyQuoteMessage() {
+  const share = state.quoteShare;
+  const message = byId("quote-share-message");
+  try {
+    await navigator.clipboard.writeText(message.value);
+    if (isCurrentQuoteShare(share)) shareStatus("Mensagem copiada.");
+  } catch {
+    if (!isCurrentQuoteShare(share)) return;
+    message.focus();
+    message.select();
+    let copied = false;
+    try {
+      copied = document.execCommand?.("copy");
+    } catch {
+      // The text remains selected for manual copying.
+    }
+    shareStatus(copied ? "Mensagem copiada." : "Texto selecionado. Use a opção Copiar do navegador ou do dispositivo.");
+  }
+}
+
 function generateRequestId() {
   if (crypto.randomUUID) return crypto.randomUUID();
   const bytes = crypto.getRandomValues(new Uint8Array(16));
@@ -656,7 +891,13 @@ async function issueQuote() {
     form.reset();
     resetItemEditor();
     const notice = byId("quote-success");
-    notice.replaceChildren(icon("check"), element("strong", "", `Orçamento nº ${quoteNumber(issued.number)} emitido.`), pdfLink(issued.number, false), pdfLink(issued.number, true));
+    notice.replaceChildren(
+      icon("check"),
+      element("strong", "", `Orçamento nº ${quoteNumber(issued.number)} emitido.`),
+      pdfLink(issued.number, false),
+      pdfLink(issued.number, true),
+      quoteShareButton(issued.number, issued.clientName)
+    );
     notice.hidden = false;
     if (state.route?.page !== "manual") toast(`Orçamento nº ${quoteNumber(issued.number)} emitido.`);
     if (state.route?.page === "history") void loadHistory(0);
@@ -692,8 +933,8 @@ async function loadHistory(page) {
       return;
     }
     const rows = records.content.map(record => {
-      const pdfActions = element("div");
-      pdfActions.append(pdfLink(record.number, false, true), pdfLink(record.number, true, true));
+      const pdfActions = element("div", "history-quote-actions");
+      pdfActions.append(pdfLink(record.number, false, true), pdfLink(record.number, true, true), quoteShareButton(record.number, record.clientName));
       const status = record.status === "PENDENTE" ? element("span", "state-pill pending", "Pendente") : element("span", "state-pill", record.status);
       return [[`Nº ${quoteNumber(record.number)}`, "cell-name"], [record.clientName], [formattedDate(record.createdAt)], [numberFormat.format(record.quantity), "numerical"], [moneyFormat.format(record.total), "numerical"], [status], [pdfActions, "cell-actions"]];
     });
@@ -1164,6 +1405,27 @@ function bindEvents() {
   byId("quote-preview-pdf").addEventListener("click", () => void showPdfPreview());
   byId("preview-pdf-close").addEventListener("click", () => previewDialog.close());
   previewDialog.addEventListener("close", () => { if (!previewDialog.open) resetPdfPreview(); });
+  const issuedDialog = byId("issued-pdf-dialog");
+  byId("issued-pdf-close").addEventListener("click", () => issuedDialog.close());
+  issuedDialog.addEventListener("close", () => { if (!issuedDialog.open) resetIssuedViewer(); });
+  byId("issued-pdf-share").addEventListener("click", () => {
+    const viewer = state.issuedViewer;
+    if (viewer) openQuoteShare(viewer.number, null, viewer.file);
+  });
+  const shareDialog = byId("quote-share-dialog");
+  byId("quote-share-close").addEventListener("click", () => shareDialog.close());
+  shareDialog.addEventListener("close", () => { if (!shareDialog.open) resetQuoteShare(); });
+  byId("quote-share-message").addEventListener("input", () => {
+    const share = state.quoteShare;
+    if (!share) return;
+    share.edited = true;
+    if (!byId("quote-share-fallback").hidden) updateWhatsappLink(share);
+  });
+  byId("quote-share-copy").addEventListener("click", () => void copyQuoteMessage());
+  byId("quote-share-native").addEventListener("click", () => void shareQuoteNatively());
+  byId("quote-share-retry").addEventListener("click", () => {
+    if (state.quoteShare) void prepareQuoteShare(state.quoteShare);
+  });
   byId("quote-issue").addEventListener("click", () => void issueQuote());
   byId("catalog-search").addEventListener("input", renderCatalog);
   byId("catalog-new").addEventListener("click", () => openCatalogEditor());

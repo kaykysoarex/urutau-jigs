@@ -10,6 +10,7 @@ import br.com.urutau.jigs.quotes.QuoteDtos.Line;
 import br.com.urutau.jigs.quotes.QuoteDtos.PdfPreviewRequest;
 import br.com.urutau.jigs.quotes.QuoteDtos.Preview;
 import br.com.urutau.jigs.quotes.QuoteDtos.PriceTier;
+import br.com.urutau.jigs.quotes.QuoteDtos.ShareDetails;
 import br.com.urutau.jigs.quotes.QuoteDtos.Summary;
 import java.math.BigDecimal;
 import java.security.MessageDigest;
@@ -107,8 +108,17 @@ public class QuoteService {
 
     @Transactional(readOnly = true)
     QuotePdf.Document document(long number) {
+        return issuedQuote(number).document();
+    }
+
+    @Transactional(readOnly = true)
+    ShareDetails shareDetails(long number) {
+        return issuedQuote(number).shareDetails();
+    }
+
+    private CommercialQuote issuedQuote(long number) {
         return quotes.findById(number).orElseThrow(
-                () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Orçamento não encontrado.")).document();
+                () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Orçamento não encontrado."));
     }
 
     private Preview calculate(List<ItemInput> requested) {

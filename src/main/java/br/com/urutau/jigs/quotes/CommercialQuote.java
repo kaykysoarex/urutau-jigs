@@ -4,6 +4,7 @@ import br.com.urutau.jigs.pdf.QuotePdf;
 import br.com.urutau.jigs.quotes.QuoteDtos.Client;
 import br.com.urutau.jigs.quotes.QuoteDtos.Preview;
 import br.com.urutau.jigs.quotes.QuoteDtos.PriceTier;
+import br.com.urutau.jigs.quotes.QuoteDtos.ShareDetails;
 import br.com.urutau.jigs.quotes.QuoteDtos.Status;
 import br.com.urutau.jigs.quotes.QuoteDtos.Summary;
 import jakarta.persistence.CascadeType;
@@ -79,6 +80,10 @@ class CommercialQuote {
 
     Summary summary() {
         return new Summary(id, clientName, createdAt, totalQuantity, total, status);
+    }
+
+    ShareDetails shareDetails() {
+        return new ShareDetails(id, clientName, clientPhone);
     }
 
     QuotePdf.Document document() {

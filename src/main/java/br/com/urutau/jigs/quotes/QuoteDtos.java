@@ -69,5 +69,7 @@ public final class QuoteDtos {
                           @JsonFormat(shape = JsonFormat.Shape.STRING) BigDecimal total,
                           Status status) {}
 
+    public record ShareDetails(long number, String clientName, String clientPhone) {}
+
     public record History(List<Summary> content, int number, int totalPages, long totalElements) {}
 }

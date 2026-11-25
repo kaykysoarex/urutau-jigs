@@ -2,6 +2,7 @@ package br.com.urutau.jigs.quotes;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestBuilders.formLogin;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -196,6 +197,68 @@ class QuoteIntegrationTest {
         mvc.perform(get("/api/quotes/{number}/pdf?download=true", number).with(user("primary-test").roles("ADMIN")))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.startsWith("attachment")));
+    }
+
+    @Test
+    void readsOnlyStoredContactDataAndTheOriginalPdfForSharing() throws Exception {
+        var items = List.of(item(first, 2));
+        String token = review(items);
+        long initialCount = quoteService.history(0, 20).totalElements();
+        var issued = issue(items, UUID.randomUUID(), token,
+                Map.of("name", "Cliente de teste", "phone", "+55 (00) 90000-0000", "city", "Goiânia", "state", "GO"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.clientPhone").doesNotHaveJsonPath())
+                .andReturn();
+        long number = json.readTree(issued.getResponse().getContentAsString()).path("number").asLong();
+        catalog.updatePrices(new PricesUpdate(List.of(price(first, "88.00", "80.00"))));
+
+        mvc.perform(get("/api/quotes/{number}", number).with(user("secondary-test").roles("ADMIN")))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.number").value(number))
+                .andExpect(jsonPath("$.clientName").value("Cliente de teste"))
+                .andExpect(jsonPath("$.clientPhone").value("+55 (00) 90000-0000"))
+                .andExpect(jsonPath("$.clientCity").doesNotHaveJsonPath());
+        byte[] pdf = mvc.perform(get("/api/quotes/{number}/pdf", number).param("download", "true")
+                        .with(user("secondary-test").roles("ADMIN")))
+                .andExpect(status().isOk()).andExpect(content().contentType(MediaType.APPLICATION_PDF))
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(header().string("Content-Disposition",
+                        containsString(String.format(java.util.Locale.ROOT, "orcamento-urutau-%05d.pdf", number))))
+                .andReturn().getResponse().getContentAsByteArray();
+        try (var loaded = Loader.loadPDF(pdf)) {
+            assertThat(new PDFTextStripper().getText(loaded))
+                    .contains(String.format(java.util.Locale.ROOT, "Nº %05d", number), "Cliente de teste", "10,00", "20,00")
+                    .doesNotContain("88,00", "PRÉVIA — SEM VALIDADE COMERCIAL");
+        }
+        mvc.perform(get("/api/quotes").with(user("secondary-test").roles("ADMIN")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(initialCount + 1))
+                .andExpect(jsonPath("$.content[0].number").value(number))
+                .andExpect(jsonPath("$.content[0].total").value("20.00"))
+                .andExpect(jsonPath("$.content[0].status").value("PENDENTE"))
+                .andExpect(jsonPath("$.content[0].clientPhone").doesNotHaveJsonPath());
+    }
+
+    @Test
+    void sharingRequiresAnAdministratorAndAnIssuedQuoteEvenWithoutAPhone() throws Exception {
+        var items = List.of(item(first, 1));
+        var issued = issue(items, UUID.randomUUID(), review(items)).andExpect(status().isCreated()).andReturn();
+        long number = json.readTree(issued.getResponse().getContentAsString()).path("number").asLong();
+        long count = quoteService.history(0, 20).totalElements();
+        mvc.perform(get("/api/quotes/{number}", number)).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/quotes/{number}/pdf", number)).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/quotes/{number}", number).with(user("outra-conta").roles("USER")))
+                .andExpect(status().isForbidden());
+        mvc.perform(get("/api/quotes/{number}", number).with(user("primary-test").roles("ADMIN")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.clientPhone").value(nullValue()));
+
+        previewPdf(Map.of("items", items), false).andExpect(status().isOk());
+        mvc.perform(get("/api/quotes/preview").with(user("primary-test").roles("ADMIN")))
+                .andExpect(status().isMethodNotAllowed());
+        mvc.perform(get("/api/quotes/{number}", number + 1).with(user("primary-test").roles("ADMIN")))
+                .andExpect(status().isNotFound());
+        mvc.perform(get("/api/quotes/{number}/pdf", number + 1).with(user("primary-test").roles("ADMIN")))
+                .andExpect(status().isNotFound());
+        assertThat(quoteService.history(0, 20).totalElements()).isEqualTo(count);
     }
 
     @Test

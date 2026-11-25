@@ -134,6 +134,9 @@ input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--brand); 
 .secondary { background: #fff; border-color: #dddde3; color: #333339; }
 .secondary:not(:disabled):hover { background: #f6f6f8; border-color: #cacad2; }
 .secondary:disabled { color: #7e7e85; }
+.whatsapp-button { background: #08663f; border-color: #08663f; color: #fff; }
+.whatsapp-button:not(:disabled):hover { background: #075334; border-color: #075334; }
+.whatsapp-button:disabled { background: #e3efe8; border-color: #e3efe8; color: #43654e; }
 .icon-button { flex: 0 0 auto; width: 36px; height: 36px; padding: 0; border: 1px solid transparent; border-radius: 7px; background: transparent; color: #5c5c66; }
 .icon-button:hover { border-color: var(--line); background: #f6f6f8; color: var(--ink); }
 .icon-button.danger:hover { border-color: #f4d4d4; background: #fff1f1; color: #a92f31; }
@@ -194,6 +197,8 @@ input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--brand); 
 #catalog-message { margin-bottom: .82rem; }
 .quote-success { margin-bottom: 1rem; }
 .quote-success .text-link { color: #245633; }
+.history-quote-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .22rem; }
+.history-quote-actions .whatsapp-button { min-height: 36px; padding: .45rem .58rem; font-size: .8rem; }
 .panel-toolbar { display: flex; align-items: center; gap: .7rem; min-height: 63px; padding: .85rem 1rem; border-bottom: 1px solid var(--line); }
 .search-field { position: relative; width: min(100%, 23rem); }
 .search-field .icon { position: absolute; top: 11px; left: .65rem; color: var(--muted); }
@@ -213,12 +218,19 @@ input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--brand); 
 .dialog-heading { border-bottom: 1px solid var(--line); }
 .dialog-heading h2 { font-size: 1.26rem; letter-spacing: -.025em; }
 .dialog-heading p { margin-top: .25rem; color: var(--muted); font-size: .88rem; }
-.catalog-dialog, .preview-pdf-dialog { width: min(650px, calc(100% - 1.75rem)); max-height: calc(100dvh - 1.75rem); padding: 0; border: 1px solid var(--line); border-radius: 14px; color: var(--ink); box-shadow: 0 18px 80px #12121940; }
-.catalog-dialog::backdrop, .preview-pdf-dialog::backdrop { background: #12121988; }
+.catalog-dialog, .preview-pdf-dialog, .quote-share-dialog { width: min(650px, calc(100% - 1.75rem)); max-height: calc(100dvh - 1.75rem); padding: 0; border: 1px solid var(--line); border-radius: 14px; color: var(--ink); box-shadow: 0 18px 80px #12121940; }
+.catalog-dialog::backdrop, .preview-pdf-dialog::backdrop, .quote-share-dialog::backdrop { background: #12121988; }
 .dialog-body { padding: 1rem 1.15rem; }
 .preview-pdf-dialog { width: min(960px, calc(100% - 1.75rem)); }
 .preview-pdf-frame { display: block; width: 100%; height: min(68dvh, 740px); border: 0; }
 .preview-pdf-actions { flex-wrap: wrap; }
+.quote-share-dialog { width: min(560px, calc(100% - 1.75rem)); }
+.quote-share-body { display: grid; gap: .85rem; }
+.quote-share-actions, .quote-share-feedback { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.quote-share-status, .quote-share-fallback { color: var(--muted); font-size: .88rem; line-height: 1.45; }
+.quote-share-fallback p:empty { display: none; }
+.quote-share-status.form-error { margin: 0; color: #af350b; }
+.quote-share-fallback { display: grid; gap: .58rem; padding-top: .85rem; border-top: 1px solid var(--line); }
 .catalog-name-line { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: .72rem 1.2rem; }
 .check-field { display: flex; gap: .42rem; align-items: center; min-height: 41px; color: #42424b; font-size: .87rem; font-weight: 620; }
 .combination-builder { display: grid; gap: .53rem; margin-top: .9rem; padding: .82rem; border: 1px solid var(--line); border-radius: 9px; background: #f8f8fa; }
@@ -300,6 +312,10 @@ input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--brand); 
   .catalog-name-line .check-field { min-height: 30px; }
   .price-toolbar { align-items: stretch; flex-direction: column; }
   .price-toolbar .button { align-self: flex-start; }
+  .quote-share-dialog .dialog-heading, .quote-share-dialog .dialog-body,
+  .issued-pdf-dialog .dialog-heading, .issued-pdf-dialog .dialog-actions { padding-inline: .85rem; }
+  .quote-share-actions > .button, .issued-pdf-dialog .dialog-actions > .button { flex: 1 1 auto; }
+  .issued-pdf-dialog .preview-pdf-frame { height: min(54dvh, 480px); }
 }
 
 @media (max-width: 365px) {

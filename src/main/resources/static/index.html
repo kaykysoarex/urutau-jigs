@@ -220,6 +220,49 @@
     </div>
   </dialog>
 
+  <dialog id="issued-pdf-dialog" class="preview-pdf-dialog issued-pdf-dialog" aria-labelledby="issued-pdf-title">
+    <div class="dialog-heading">
+      <h2 id="issued-pdf-title">Orçamento emitido</h2>
+      <button id="issued-pdf-close" class="icon-button" type="button" aria-label="Fechar orçamento"><svg class="icon"><use href="/icons.svg#x"/></svg></button>
+    </div>
+    <p id="issued-pdf-status" class="dialog-body" role="status"></p>
+    <iframe id="issued-pdf-frame" class="preview-pdf-frame" title="PDF do orçamento emitido" hidden></iframe>
+    <div class="dialog-actions preview-pdf-actions">
+      <a id="issued-pdf-open" class="button secondary" target="_blank" rel="noopener"><svg class="icon"><use href="/icons.svg#eye"/></svg>Visualizar em nova aba</a>
+      <a id="issued-pdf-download" class="button secondary"><svg class="icon"><use href="/icons.svg#download"/></svg>Baixar PDF</a>
+      <button id="issued-pdf-share" class="button whatsapp-button" type="button" aria-haspopup="dialog"><svg class="icon"><use href="/icons.svg#whatsapp"/></svg>Compartilhar pelo WhatsApp</button>
+    </div>
+  </dialog>
+
+  <dialog id="quote-share-dialog" class="quote-share-dialog" aria-labelledby="quote-share-title">
+    <div class="dialog-heading">
+      <h2 id="quote-share-title">Compartilhar pelo WhatsApp</h2>
+      <button id="quote-share-close" class="icon-button" type="button" aria-label="Fechar compartilhamento"><svg class="icon"><use href="/icons.svg#x"/></svg></button>
+    </div>
+    <div class="dialog-body quote-share-body">
+      <label class="field">
+        <span>Mensagem para o cliente</span>
+        <textarea id="quote-share-message" rows="8"></textarea>
+      </label>
+      <div class="quote-share-actions">
+        <button id="quote-share-copy" class="button secondary" type="button" disabled><svg class="icon"><use href="/icons.svg#copy"/></svg>Copiar mensagem</button>
+        <button id="quote-share-native" class="button whatsapp-button" type="button" hidden disabled><svg class="icon"><use href="/icons.svg#share"/></svg>Abrir menu de compartilhamento</button>
+      </div>
+      <div class="quote-share-feedback">
+        <p id="quote-share-status" class="quote-share-status" role="status" aria-atomic="true"></p>
+        <button id="quote-share-retry" class="button secondary" type="button" hidden>Tentar novamente</button>
+      </div>
+      <section id="quote-share-fallback" class="quote-share-fallback" aria-label="Compartilhar pelo WhatsApp Web" hidden>
+        <p>Baixe o PDF e anexe o arquivo manualmente na conversa.</p>
+        <p id="quote-share-recipient"></p>
+        <div class="quote-share-actions">
+          <a id="quote-share-download" class="button secondary"><svg class="icon"><use href="/icons.svg#download"/></svg>Baixar PDF</a>
+          <a id="quote-share-whatsapp" class="button whatsapp-button" target="_blank" rel="noopener noreferrer"><svg class="icon"><use href="/icons.svg#whatsapp"/></svg>Abrir WhatsApp Web</a>
+        </div>
+      </section>
+    </div>
+  </dialog>
+
   <dialog id="catalog-dialog" class="catalog-dialog" aria-labelledby="catalog-dialog-heading">
     <form id="catalog-form">
       <div class="dialog-heading"><div><h2 id="catalog-dialog-heading">Novo modelo</h2><p>Cadastre as combinações de gramatura e cor da isca.</p></div><button id="catalog-close" class="icon-button" type="button" aria-label="Fechar"><svg class="icon"><use href="/icons.svg#x"/></svg></button></div>
