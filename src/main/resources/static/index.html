@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#19191c">
+  <title>Novo orçamento | Urutau Jigs</title>
+  <link rel="stylesheet" href="/app.css">
+  <script src="/app.js" defer></script>
+</head>
+<body class="workspace">
+  <a class="skip-link" href="#main">Pular para o conteúdo</a>
+  <button id="nav-overlay" class="nav-overlay" hidden type="button" aria-label="Fechar menu lateral"></button>
+  <aside id="sidebar" class="sidebar" aria-label="Menu lateral">
+    <div class="brand-panel">
+      <a class="brand-logo" href="#novo-orcamento" aria-label="Urutau Jigs, novo orçamento">
+        <img src="/assets/urutau-logo.png" alt="Urutau Jigs" width="615" height="615">
+      </a>
+      <span class="brand-caption">Área administrativa</span>
+    </div>
+    <nav id="navigation" class="navigation" aria-label="Navegação principal">
+      <p class="nav-label">Orçamentos</p>
+      <a class="nav-link" href="#novo-orcamento" data-page="manual" aria-current="page"><svg class="icon"><use href="/icons.svg#file-plus"/></svg><span>Novo orçamento</span></a>
+      <a class="nav-link" href="#urutau-ai" data-page="ai"><svg class="icon"><use href="/icons.svg#sparkles"/></svg><span>URUTAU AI</span></a>
+      <a class="nav-link" href="#meus-orcamentos" data-page="history"><svg class="icon"><use href="/icons.svg#archive"/></svg><span>Meus orçamentos</span></a>
+      <p class="nav-label">Administração</p>
+      <a class="nav-link" href="#catalogo" data-page="catalog"><svg class="icon"><use href="/icons.svg#boxes"/></svg><span>Catálogo de iscas</span></a>
+      <a class="nav-link" href="#precos" data-page="prices"><svg class="icon"><use href="/icons.svg#tag"/></svg><span>Tabela de preços</span></a>
+      <a class="nav-link" href="#configuracoes" data-page="settings"><svg class="icon"><use href="/icons.svg#settings"/></svg><span>Configurações</span></a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="account">
+        <span id="account-avatar" class="avatar" aria-hidden="true"><svg class="icon"><use href="/icons.svg#user"/></svg></span>
+        <div class="account-info"><strong id="account-name">Administrador</strong><span>Acesso administrativo</span></div>
+      </div>
+      <form id="logout-form" action="/logout" method="post">
+        <input id="logout-csrf" type="hidden" name="_csrf">
+        <button class="icon-button logout-button" type="submit" aria-label="Sair" title="Sair"><svg class="icon"><use href="/icons.svg#log-out"/></svg></button>
+      </form>
+    </div>
+  </aside>
+
+  <div class="body-shell">
+    <header class="topbar">
+      <button id="nav-toggle" class="icon-button nav-toggle" type="button" aria-controls="sidebar" aria-expanded="false" aria-label="Abrir menu lateral"><svg class="icon"><use href="/icons.svg#menu"/></svg></button>
+      <nav class="breadcrumbs" aria-label="Localização atual">
+        <span id="breadcrumb-group">Orçamentos</span><svg class="icon"><use href="/icons.svg#chevron-right"/></svg><strong id="breadcrumb-page">Novo orçamento</strong>
+      </nav>
+      <time id="header-date" class="header-date"></time>
+    </header>
+
+    <main id="main" class="main-content" tabindex="-1">
+      <section id="page-manual" data-view="manual" aria-labelledby="manual-title">
+        <div class="page-heading">
+          <div><h1 id="manual-title">Novo orçamento</h1><p>Informe os dados do cliente e selecione as iscas para emitir o orçamento.</p></div>
+          <a class="button secondary ai-shortcut" href="#urutau-ai"><svg class="icon"><use href="/icons.svg#sparkles"/></svg>Usar URUTAU AI</a>
+        </div>
+        <div id="quote-success" class="notice success quote-success" hidden role="status"></div>
+        <div id="manual-layout" class="quote-grid">
+          <div class="quote-main">
+            <section class="panel" aria-labelledby="client-heading">
+              <div class="section-heading">
+                <span class="section-icon"><svg class="icon"><use href="/icons.svg#user"/></svg></span>
+                <div><h2 id="client-heading">Dados do cliente</h2><p>Informações que aparecem no PDF.</p></div>
+              </div>
+              <form id="client-form" class="panel-body client-fields">
+                <label class="field"><span>Nome do cliente <span class="required" aria-label="obrigatório">*</span></span><input id="client-name" name="name" maxlength="120" placeholder="Nome ou razão social" required></label>
+                <label class="field"><span>Telefone</span><input id="client-phone" type="tel" name="phone" maxlength="40" placeholder="(00) 00000-0000"></label>
+                <label class="field"><span>Cidade</span><input id="client-city" name="city" maxlength="120" placeholder="Informe a cidade"></label>
+                <label class="field"><span>UF</span><select id="client-state" name="state" aria-label="UF"><option value="">Selecione</option></select></label>
+              </form>
+            </section>
+
+            <section class="panel items-panel" aria-labelledby="items-heading">
+              <div class="section-heading">
+                <span class="section-icon"><svg class="icon"><use href="/icons.svg#boxes"/></svg></span>
+                <div><h2 id="items-heading">Itens do orçamento</h2><p>Selecione o modelo, a gramatura e a cor de cada item.</p></div>
+              </div>
+              <div class="panel-body">
+                <div id="catalog-message" class="notice" hidden></div>
+                <form id="item-form" class="item-fields">
+                  <label class="field item-model"><span>Modelo</span><select id="item-model" required disabled><option value="">Carregando…</option></select></label>
+                  <label class="field"><span>Gramatura</span><select id="item-weight" required disabled><option value="">Selecione</option></select></label>
+                  <label class="field"><span>Cor</span><select id="item-color" required disabled><option value="">Selecione</option></select></label>
+                  <label class="field quantity-field"><span>Quantidade</span><input id="item-quantity" type="number" min="1" max="100000" step="1" inputmode="numeric" value="1" required></label>
+                  <button id="item-add" class="button primary item-add" type="submit" disabled><svg class="icon"><use href="/icons.svg#plus"/></svg><span>Adicionar</span></button>
+                  <button id="item-cancel" class="button secondary item-cancel" hidden type="button">Cancelar edição</button>
+                </form>
+                <p id="item-error" class="form-error" aria-live="polite" hidden></p>
+                <div id="manual-items" class="manual-items" aria-live="polite"></div>
+              </div>
+            </section>
+          </div>
+
+          <aside class="quote-summary panel" aria-labelledby="quote-summary-title">
+            <div class="summary-heading">
+              <span class="summary-icon"><svg class="icon"><use href="/icons.svg#receipt"/></svg></span>
+              <div><h2 id="quote-summary-title">Resumo do orçamento</h2><p id="summary-state">Em elaboração</p></div>
+            </div>
+            <div class="summary-body" aria-live="polite">
+              <dl class="summary-values">
+                <div><dt>Quantidade total</dt><dd id="summary-quantity">0 unidades</dd></div>
+                <div><dt>Tabela aplicada</dt><dd id="summary-tier"><span class="tier-pill">A definir</span></dd></div>
+              </dl>
+              <div id="threshold-block" class="threshold-block">
+                <div class="threshold-copy"><svg class="icon"><use href="/icons.svg#tag"/></svg><p id="threshold-message">Preço de lojista a partir de 30 unidades.</p></div>
+                <progress id="threshold-progress" value="0" max="30" aria-label="Unidades para atingir o preço de lojista"></progress>
+              </div>
+              <div class="summary-total"><span>Valor total</span><strong id="summary-total">R$ 0,00</strong></div>
+              <p id="summary-message" class="summary-message" hidden></p>
+              <div class="summary-actions">
+                <button id="quote-preview-pdf" class="button secondary issue-button" type="button" aria-haspopup="dialog" disabled><svg class="icon"><use href="/icons.svg#eye"/></svg>Pré-visualizar PDF</button>
+                <button id="quote-issue" class="button primary issue-button" type="button" disabled><svg class="icon"><use href="/icons.svg#file-text"/></svg><span>Emitir orçamento</span></button>
+              </div>
+              <small class="summary-note"><svg class="icon"><use href="/icons.svg#info"/></svg>Frete não incluso.</small>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section id="page-ai" data-view="ai" aria-labelledby="ai-title" hidden>
+        <div class="page-heading">
+          <div><h1 id="ai-title">URUTAU AI</h1><p>Transforme uma mensagem de pedido em itens para revisar no orçamento.</p></div>
+          <button id="ai-new" class="button secondary" type="button"><svg class="icon"><use href="/icons.svg#plus"/></svg>Nova conversa</button>
+        </div>
+        <div class="ai-grid">
+          <section class="panel chat-panel" aria-label="Conversa com a URUTAU AI">
+            <div class="section-heading"><span class="section-icon"><svg class="icon"><use href="/icons.svg#sparkles"/></svg></span><div><h2>Assistente de orçamento</h2><p>Conversa interna com o administrador.</p></div></div>
+            <div id="chat-log" class="chat-log" role="log" aria-live="polite" aria-relevant="additions"></div>
+            <form id="chat-form" class="chat-form">
+              <div id="ai-warning" class="notice ai-warning" role="status" hidden></div>
+              <label class="field"><span>Mensagem do pedido ou resposta</span><textarea id="chat-message" rows="4" placeholder="Cole a mensagem do pedido ou responda às dúvidas do assistente." required disabled></textarea></label>
+              <div class="chat-actions"><small>Remova nomes, telefones e endereços das mensagens copiadas.</small><button id="chat-send" class="button primary" type="submit" disabled><svg class="icon"><use href="/icons.svg#send"/></svg><span>Enviar</span></button></div>
+            </form>
+          </section>
+          <aside class="panel" aria-labelledby="ai-items-heading">
+            <div class="section-heading"><span class="section-icon"><svg class="icon"><use href="/icons.svg#list"/></svg></span><div><h2 id="ai-items-heading">Itens identificados</h2><p id="ai-count">Nenhum item identificado</p></div></div>
+            <div class="panel-body"><div id="ai-items"></div><button id="ai-review" class="button primary block" type="button" disabled>Revisar orçamento</button></div>
+          </aside>
+        </div>
+      </section>
+
+      <section id="page-history" data-view="history" aria-labelledby="history-title" hidden>
+        <div class="page-heading">
+          <div><h1 id="history-title">Meus orçamentos</h1><p>Consulte os orçamentos emitidos, visualize ou baixe os PDFs.</p></div>
+          <a class="button primary" href="#novo-orcamento"><svg class="icon"><use href="/icons.svg#plus"/></svg>Novo orçamento</a>
+        </div>
+        <section class="panel" aria-label="Histórico de orçamentos"><div id="history-content" aria-live="polite"></div><div id="history-pages" class="pagination" hidden></div></section>
+      </section>
+
+      <section id="page-catalog" data-view="catalog" aria-labelledby="catalog-title" hidden>
+        <div class="page-heading">
+          <div><h1 id="catalog-title">Catálogo de iscas</h1><p>Gerencie os modelos, gramaturas e cores disponíveis para orçamento.</p></div>
+          <button id="catalog-new" class="button primary" type="button"><svg class="icon"><use href="/icons.svg#plus"/></svg>Novo modelo</button>
+        </div>
+        <section class="panel" aria-label="Modelos cadastrados">
+          <div class="panel-toolbar"><label class="field search-field"><span class="sr-only">Buscar modelo</span><svg class="icon"><use href="/icons.svg#search"/></svg><input id="catalog-search" type="search" placeholder="Buscar por nome do modelo"></label></div>
+          <div id="catalog-content" aria-live="polite"></div>
+        </section>
+      </section>
+
+      <section id="page-prices" data-view="prices" aria-labelledby="prices-title" hidden>
+        <div class="page-heading"><div><h1 id="prices-title">Tabela de preços</h1><p>Defina os valores de consumidor final e lojista para cada combinação de isca.</p></div></div>
+        <section class="panel" aria-label="Preços do catálogo">
+          <form id="price-form">
+            <div class="panel-toolbar price-toolbar"><label class="field"><span>Modelo</span><select id="price-model"><option value="">Carregando…</option></select></label><button id="price-save" class="button primary" type="submit" disabled><svg class="icon"><use href="/icons.svg#save"/></svg>Salvar preços</button></div>
+            <div id="price-content" aria-live="polite"></div>
+            <p id="price-error" class="form-error price-error" hidden></p>
+          </form>
+        </section>
+      </section>
+
+      <section id="page-settings" data-view="settings" aria-labelledby="settings-title" hidden>
+        <div class="page-heading"><div><h1 id="settings-title">Configurações</h1><p>Defina a quantidade mínima para aplicar a tabela de lojista.</p></div></div>
+        <section class="panel settings-panel" aria-labelledby="settings-business-heading">
+          <div class="section-heading"><span class="section-icon"><svg class="icon"><use href="/icons.svg#settings"/></svg></span><div><h2 id="settings-business-heading">Regra comercial</h2><p>O mínimo é calculado sobre o total de iscas do orçamento.</p></div></div>
+          <form id="settings-form" class="panel-body settings-form">
+            <label class="field"><span>Quantidade mínima para lojista</span><input id="settings-threshold" type="number" min="1" max="2147483647" step="1" inputmode="numeric" required disabled><small>Ao atingir essa quantidade, a tabela de lojista se aplica a todos os itens.</small></label>
+            <p id="settings-error" class="form-error" hidden></p>
+            <button id="settings-save" class="button primary" type="submit" disabled><svg class="icon"><use href="/icons.svg#save"/></svg>Salvar configuração</button>
+          </form>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="preview-pdf-dialog" class="preview-pdf-dialog" aria-labelledby="preview-pdf-title">
+    <div class="dialog-heading">
+      <h2 id="preview-pdf-title">Prévia do orçamento</h2>
+      <button id="preview-pdf-close" class="icon-button" type="button" aria-label="Fechar prévia"><svg class="icon"><use href="/icons.svg#x"/></svg></button>
+    </div>
+    <p id="preview-pdf-status" class="dialog-body" role="status"></p>
+    <iframe id="preview-pdf-frame" class="preview-pdf-frame" title="PDF da prévia do orçamento" hidden></iframe>
+    <div id="preview-pdf-actions" class="dialog-actions preview-pdf-actions" hidden>
+      <a id="preview-pdf-open" class="button secondary" target="_blank" rel="noopener"><svg class="icon"><use href="/icons.svg#eye"/></svg>Visualizar em nova aba</a>
+      <a id="preview-pdf-download" class="button primary" download="previa-orcamento-urutau.pdf"><svg class="icon"><use href="/icons.svg#download"/></svg>Baixar PDF</a>
+    </div>
+  </dialog>
+
+  <dialog id="catalog-dialog" class="catalog-dialog" aria-labelledby="catalog-dialog-heading">
+    <form id="catalog-form">
+      <div class="dialog-heading"><div><h2 id="catalog-dialog-heading">Novo modelo</h2><p>Cadastre as combinações de gramatura e cor da isca.</p></div><button id="catalog-close" class="icon-button" type="button" aria-label="Fechar"><svg class="icon"><use href="/icons.svg#x"/></svg></button></div>
+      <div class="dialog-body">
+        <div class="catalog-name-line"><label class="field"><span>Nome do modelo <span class="required" aria-label="obrigatório">*</span></span><input id="catalog-name" maxlength="120" required placeholder="Nome da isca"></label><label class="check-field"><input id="catalog-active" type="checkbox" checked>Modelo ativo</label></div>
+        <div class="combination-builder">
+          <div class="variant-fields"><label class="field"><span>Gramaturas (g)</span><input id="catalog-weights" placeholder="Ex.: 10, 12" maxlength="120"></label><label class="field"><span>Códigos das cores</span><input id="catalog-colors" placeholder="Ex.: 01, 03, 07" maxlength="180"></label><button id="add-combinations" class="button secondary" type="button"><svg class="icon"><use href="/icons.svg#plus"/></svg>Adicionar</button></div>
+          <small>Separe os valores por vírgulas. Cada gramatura será combinada com as cores informadas.</small>
+        </div>
+        <div id="dialog-variants" class="dialog-variants"></div>
+        <p id="catalog-error" class="form-error" hidden></p>
+      </div>
+      <div class="dialog-actions"><button id="catalog-cancel" type="button" class="button secondary">Cancelar</button><button id="catalog-save" type="submit" class="button primary">Salvar modelo</button></div>
+    </form>
+  </dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

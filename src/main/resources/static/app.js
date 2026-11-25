@@ -1,0 +1,1084 @@
+"use strict";
+
+const byId = id => document.getElementById(id);
+const routes = {
+  "novo-orcamento": { page: "manual", title: "Novo orçamento", group: "Orçamentos" },
+  "urutau-ai": { page: "ai", title: "URUTAU AI", group: "Orçamentos" },
+  "meus-orcamentos": { page: "history", title: "Meus orçamentos", group: "Orçamentos" },
+  catalogo: { page: "catalog", title: "Catálogo de iscas", group: "Administração" },
+  precos: { page: "prices", title: "Tabela de preços", group: "Administração" },
+  configuracoes: { page: "settings", title: "Configurações", group: "Administração" }
+};
+const state = {
+  session: null,
+  route: null,
+  catalog: null,
+  catalogError: null,
+  catalogLoad: null,
+  threshold: 30,
+  draft: [],
+  editingItem: null,
+  preview: null,
+  previewError: null,
+  previewLoading: false,
+  previewRevision: 0,
+  pdfPreviewRequest: null,
+  pdfPreviewUrl: null,
+  issueBusy: false,
+  quoteAttempt: null,
+  historyRevision: 0,
+  catalogModel: null,
+  catalogVariants: [],
+  catalogSaving: false,
+  priceEdits: new Map(),
+  priceBusy: false,
+  settingsBusy: false,
+  conversation: null,
+  aiOnline: false,
+  aiBusy: false
+};
+const numberFormat = new Intl.NumberFormat("pt-BR");
+const moneyFormat = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+const dateFormat = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeZone: "America/Sao_Paulo" });
+const currentDateFormat = new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "long", year: "numeric", timeZone: "America/Sao_Paulo" });
+const unitLabel = value => `${numberFormat.format(value)} ${value === 1 ? "unidade" : "unidades"}`;
+const quoteNumber = value => String(value).padStart(5, "0");
+const keyForVariant = ({ weight, color }) => `${weight}/${color}`;
+const activeProducts = () => (state.catalog ?? []).filter(product => product.active && product.variants.some(variant => variant.active));
+
+class RequestError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+async function api(url, options = {}) {
+  const headers = { Accept: options.pdf ? "application/pdf, application/json" : "application/json" };
+  const request = { method: options.method ?? "GET", headers, credentials: "same-origin", signal: options.signal };
+  if (request.method !== "GET" && state.session?.csrfHeader) {
+    headers[state.session.csrfHeader] = state.session.csrfToken;
+  }
+  if (options.body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    request.body = JSON.stringify(options.body);
+  }
+  let response;
+  try {
+    response = await fetch(url, request);
+  } catch {
+    throw new RequestError(0, "Não foi possível conectar ao sistema. Tente novamente.");
+  }
+  if (response.status === 401 || (response.redirected && new URL(response.url).pathname === "/login.html")) {
+    location.assign("/login.html");
+    throw new RequestError(401, "Entre novamente para continuar.");
+  }
+  if (response.status === 204) return null;
+  const contentType = response.headers.get("content-type");
+  const data = contentType?.includes("json") ? await response.json() : null;
+  if (!response.ok) {
+    const message = response.status === 403 ? "Sua sessão pode ter expirado. Atualize a página e entre novamente, se necessário." : "Não foi possível concluir esta ação.";
+    throw new RequestError(response.status, data?.message ?? message);
+  }
+  if (options.pdf) {
+    if (contentType?.split(";")[0].trim() !== "application/pdf") {
+      throw new RequestError(response.status, "O sistema não retornou um PDF.");
+    }
+    return response.blob();
+  }
+  return data;
+}
+
+function element(tag, className, content) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (content !== undefined) node.textContent = content;
+  return node;
+}
+
+function icon(name) {
+  const namespace = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(namespace, "svg");
+  svg.setAttribute("class", "icon");
+  svg.setAttribute("aria-hidden", "true");
+  const use = document.createElementNS(namespace, "use");
+  use.setAttribute("href", `/icons.svg#${name}`);
+  svg.append(use);
+  return svg;
+}
+
+function action(label, symbol, handler, variant = "") {
+  const button = element("button", `icon-button ${variant}`.trim());
+  button.type = "button";
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  button.append(icon(symbol));
+  button.addEventListener("click", handler);
+  return button;
+}
+
+function link(label, href, className = "text-link") {
+  const anchor = element("a", className, label);
+  anchor.href = href;
+  return anchor;
+}
+
+function pdfLink(number, download, symbolOnly = false) {
+  const label = download ? "Baixar PDF" : "Visualizar PDF";
+  const anchor = link(label, `/api/quotes/${number}/pdf${download ? "?download=true" : ""}`, symbolOnly ? "icon-button" : "text-link");
+  if (!download) {
+    anchor.target = "_blank";
+    anchor.rel = "noopener";
+  }
+  if (symbolOnly) {
+    anchor.replaceChildren(icon(download ? "download" : "eye"));
+    anchor.title = label;
+    anchor.setAttribute("aria-label", `${label} do orçamento ${quoteNumber(number)}`);
+  }
+  return anchor;
+}
+
+function emptyState(title, description, symbol, extra) {
+  const result = element("div", "empty-state");
+  const glyph = element("span", "empty-icon");
+  glyph.append(icon(symbol));
+  result.append(glyph, element("h3", "", title), element("p", "", description));
+  if (extra) result.append(extra);
+  return result;
+}
+
+function table(caption, headings, rows, className = "") {
+  const wrapper = element("div", "scroll-table");
+  wrapper.tabIndex = 0;
+  wrapper.setAttribute("role", "region");
+  wrapper.setAttribute("aria-label", caption);
+  const grid = element("table", `data-table ${className}`.trim());
+  const head = grid.createTHead().insertRow();
+  headings.forEach(([label, style]) => {
+    const header = element("th", style, label);
+    header.scope = "col";
+    head.append(header);
+  });
+  const body = grid.createTBody();
+  rows.forEach(cells => {
+    const row = body.insertRow();
+    cells.forEach(([value, style]) => {
+      const cell = row.insertCell();
+      if (style) cell.className = style;
+      if (value instanceof Node) cell.append(value);
+      else cell.textContent = value;
+    });
+  });
+  wrapper.append(grid);
+  return wrapper;
+}
+
+function captioned(primary, secondary) {
+  const group = element("div");
+  group.append(element("strong", "cell-name", primary), element("span", "cell-secondary", secondary));
+  return group;
+}
+
+function setOptions(select, choices, placeholder, value) {
+  select.replaceChildren(new Option(placeholder, ""), ...choices.map(([id, label]) => new Option(label, id)));
+  if (value !== undefined && [...select.options].some(option => option.value === String(value))) {
+    select.value = String(value);
+  }
+}
+
+function formFeedback(id, message) {
+  const feedback = byId(id);
+  feedback.textContent = message || "";
+  feedback.hidden = !message;
+}
+
+let toastTimer;
+function toast(message) {
+  const node = byId("toast");
+  clearTimeout(toastTimer);
+  node.textContent = message;
+  node.hidden = false;
+  toastTimer = setTimeout(() => { node.hidden = true; }, 5000);
+}
+
+function navOpen(open) {
+  byId("sidebar").classList.toggle("is-open", open);
+  byId("nav-overlay").hidden = !open;
+  byId("nav-toggle").setAttribute("aria-expanded", String(open));
+}
+
+function navigate() {
+  const route = routes[location.hash.slice(1)] ?? routes["novo-orcamento"];
+  const pageChanged = state.route?.page !== route.page;
+  state.route = route;
+  const previewDialog = byId("preview-pdf-dialog");
+  if (route.page !== "manual" && previewDialog.open) previewDialog.close();
+  document.title = `${route.title} | Urutau Jigs`;
+  byId("breadcrumb-group").textContent = route.group;
+  byId("breadcrumb-page").textContent = route.title;
+  document.querySelectorAll("[data-view]").forEach(node => { node.hidden = node.dataset.view !== route.page; });
+  document.querySelectorAll("[data-page]").forEach(node => {
+    if (node.dataset.page === route.page) node.setAttribute("aria-current", "page");
+    else node.removeAttribute("aria-current");
+  });
+  navOpen(false);
+  if (pageChanged) {
+    window.scrollTo(0, 0);
+    byId("main").focus({ preventScroll: true });
+  }
+  if (!state.session) return;
+  if (route.page === "manual") {
+    renderManualCatalog();
+    void loadCatalog();
+    void updatePreview();
+  }
+  if (route.page === "history") void loadHistory(0);
+  if (route.page === "catalog") { renderCatalog(); void loadCatalog(); }
+  if (route.page === "prices") { renderPriceModels(); void loadCatalog(); }
+  if (route.page === "settings") void loadSettings();
+  if (route.page === "ai") void checkAI();
+}
+
+async function loadCatalog() {
+  if (state.catalogLoad) return state.catalogLoad;
+  state.catalogLoad = (async () => {
+    try {
+      state.catalog = await api("/api/catalog");
+      state.catalogError = null;
+    } catch (error) {
+      state.catalogError = error.message;
+    } finally {
+      state.catalogLoad = null;
+      renderManualCatalog();
+      renderCatalog();
+      renderPriceModels();
+    }
+  })();
+  return state.catalogLoad;
+}
+
+function renderManualCatalog(pick = {}) {
+  const models = activeProducts();
+  const modelSelect = byId("item-model");
+  const weightSelect = byId("item-weight");
+  const colorSelect = byId("item-color");
+  const modelId = pick.modelId ?? modelSelect.value;
+  const weight = pick.weight ?? weightSelect.value;
+  const variantId = pick.variantId ?? colorSelect.value;
+  setOptions(modelSelect, models.map(model => [model.id, model.name]), state.catalog ? "Selecione o modelo" : state.catalogError ? "Catálogo indisponível" : "Carregando…", modelId);
+  const selected = models.find(model => String(model.id) === modelSelect.value);
+  const active = selected?.variants.filter(variant => variant.active) ?? [];
+  const weights = [...new Set(active.map(variant => variant.weight))].sort((a, b) => a - b);
+  setOptions(weightSelect, weights.map(grams => [grams, `${grams} g`]), "Selecione", weight);
+  const colors = active.filter(variant => String(variant.weight) === weightSelect.value).sort((a, b) => a.color.localeCompare(b.color, "pt-BR"));
+  setOptions(colorSelect, colors.map(variant => [variant.id, variant.color]), "Selecione", variantId);
+  modelSelect.disabled = !models.length || state.issueBusy;
+  weightSelect.disabled = !selected || state.issueBusy;
+  colorSelect.disabled = !colors.length || state.issueBusy;
+  byId("item-quantity").disabled = state.issueBusy || !models.length;
+  byId("item-add").disabled = !colorSelect.value || state.issueBusy;
+
+  const note = byId("catalog-message");
+  note.replaceChildren();
+  note.hidden = true;
+  if (state.catalogError && !state.catalog) {
+    const retry = element("button", "text-button", "Tentar novamente");
+    retry.type = "button";
+    retry.addEventListener("click", () => void loadCatalog());
+    note.append(element("span", "", state.catalogError), retry);
+    note.hidden = false;
+  } else if (state.catalog && !models.length) {
+    note.append(element("span", "", "O orçamento precisa de pelo menos uma combinação ativa."), link("Abrir catálogo", "#catalogo"));
+    note.hidden = false;
+  }
+}
+
+function pickVariant(id) {
+  for (const product of activeProducts()) {
+    const match = product.variants.find(variant => variant.active && variant.id === id);
+    if (match) return { modelId: product.id, model: product.name, ...match };
+  }
+  return null;
+}
+
+function resetItemEditor() {
+  state.editingItem = null;
+  byId("item-quantity").value = "1";
+  byId("item-add").querySelector("span").textContent = "Adicionar";
+  byId("item-cancel").hidden = true;
+  formFeedback("item-error", "");
+  renderManualCatalog({ modelId: "", weight: "", variantId: "" });
+}
+
+function editItem(id) {
+  const draft = state.draft.find(item => item.variantId === id);
+  if (!draft || state.issueBusy) return;
+  const variant = pickVariant(id);
+  state.editingItem = id;
+  byId("item-add").querySelector("span").textContent = "Salvar item";
+  byId("item-cancel").hidden = false;
+  byId("item-quantity").value = draft.quantity;
+  renderManualCatalog(variant ? { modelId: variant.modelId, weight: variant.weight, variantId: id } : { modelId: "", weight: "", variantId: "" });
+  if (!variant) formFeedback("item-error", "Selecione uma combinação ativa para substituir este item.");
+  byId("item-model").focus();
+}
+
+function draftChanged() {
+  byId("quote-success").hidden = true;
+  renderManualRows();
+  void updatePreview();
+}
+
+function addItem(event) {
+  event.preventDefault();
+  if (state.issueBusy) return;
+  const component = pickVariant(Number(byId("item-color").value));
+  const quantity = Number(byId("item-quantity").value);
+  if (!component || !Number.isInteger(quantity) || quantity < 1 || quantity > 100000) {
+    formFeedback("item-error", "Selecione uma combinação ativa e informe uma quantidade entre 1 e 100.000.");
+    return;
+  }
+  const kept = state.draft.filter(item => item.variantId !== state.editingItem);
+  const existing = kept.find(item => item.variantId === component.id);
+  if ((existing?.quantity ?? 0) + quantity > 100000) {
+    formFeedback("item-error", "Cada combinação admite até 100.000 unidades por orçamento.");
+    return;
+  }
+  if (!existing && kept.length >= 250) {
+    formFeedback("item-error", "Cada orçamento admite até 250 combinações.");
+    return;
+  }
+  if (existing) {
+    state.draft = kept.map(item => item.variantId === component.id ? { ...item, quantity: item.quantity + quantity } : item);
+  } else {
+    const item = { variantId: component.id, model: component.model, weight: component.weight, color: component.color, quantity };
+    if (state.editingItem === null) state.draft = [...kept, item];
+    else state.draft = state.draft.map(line => line.variantId === state.editingItem ? item : line);
+  }
+  const selection = { modelId: component.modelId, weight: component.weight, variantId: component.id };
+  const wasEditing = state.editingItem !== null;
+  resetItemEditor();
+  if (!wasEditing) renderManualCatalog(selection);
+  draftChanged();
+  byId(wasEditing ? "item-model" : "item-quantity").focus();
+}
+
+function removeItem(id) {
+  if (state.issueBusy) return;
+  state.draft = state.draft.filter(item => item.variantId !== id);
+  if (state.editingItem === id) resetItemEditor();
+  draftChanged();
+  byId("item-model").focus();
+}
+
+function renderManualRows() {
+  const container = byId("manual-items");
+  if (!state.draft.length) {
+    container.replaceChildren(emptyState("Nenhum item adicionado", "Selecione uma combinação no formulário acima para começar.", "boxes"));
+    return;
+  }
+  const values = new Map((state.preview?.items ?? []).map(item => [item.variantId, item]));
+  const rows = state.draft.map(item => {
+    const priced = values.get(item.variantId);
+    const controls = element("div");
+    const edit = action(`Editar ${item.model}, ${item.weight} g, cor ${item.color}`, "edit", () => editItem(item.variantId));
+    const remove = action(`Remover ${item.model}, ${item.weight} g, cor ${item.color}`, "trash", () => removeItem(item.variantId), "danger");
+    edit.disabled = state.issueBusy;
+    remove.disabled = state.issueBusy;
+    controls.append(edit, remove);
+    return [
+      [captioned(priced?.model ?? item.model, `${item.weight} g · Cor ${item.color}`)],
+      [numberFormat.format(item.quantity), "numerical"],
+      [priced?.unitPrice != null ? moneyFormat.format(priced.unitPrice) : "—", `numerical${priced && priced.unitPrice == null ? " cell-missing" : ""}`],
+      [priced?.subtotal != null ? moneyFormat.format(priced.subtotal) : "—", "numerical"],
+      [controls, "cell-actions"]
+    ];
+  });
+  container.replaceChildren(table("Itens do orçamento", [["Isca"], ["Qtd.", "numerical"], ["Unitário", "numerical"], ["Subtotal", "numerical"], ["Ações", "cell-actions"]], rows));
+}
+
+function draftItems() {
+  return state.draft.map(({ variantId, quantity }) => ({ variantId, quantity }));
+}
+
+function readQuoteClient(form) {
+  return Object.fromEntries(Array.from(new FormData(form), ([key, value]) => [key, value.trim()]));
+}
+
+async function updatePreview() {
+  const revision = ++state.previewRevision;
+  const items = draftItems();
+  state.preview = null;
+  state.previewError = null;
+  state.previewLoading = items.length > 0;
+  renderManualRows();
+  renderSummary();
+  if (!items.length) return;
+  try {
+    const result = await api("/api/quotes/preview", { method: "POST", body: { items } });
+    if (revision !== state.previewRevision) return;
+    state.preview = result;
+    state.threshold = result.wholesaleThreshold;
+  } catch (error) {
+    if (revision !== state.previewRevision) return;
+    state.previewError = error.message;
+  } finally {
+    if (revision === state.previewRevision) {
+      state.previewLoading = false;
+      renderManualRows();
+      renderSummary();
+    }
+  }
+}
+
+function missingPrices() {
+  if (!state.preview) return false;
+  return state.preview.total == null || state.preview.items.some(item => item.unitPrice == null);
+}
+
+function renderSummary() {
+  const estimate = state.preview;
+  const quantity = estimate?.quantity ?? state.draft.reduce((sum, item) => sum + item.quantity, 0);
+  const threshold = estimate?.wholesaleThreshold ?? state.threshold;
+  const wholesale = estimate?.priceTier === "LOJISTA";
+  const remaining = estimate?.remainingForWholesale ?? Math.max(0, threshold - quantity);
+  const tier = estimate?.priceTier ? wholesale ? "Lojista" : "Consumidor final" : "A definir";
+  byId("summary-quantity").textContent = unitLabel(quantity);
+  byId("summary-tier").replaceChildren(element("span", `tier-pill${wholesale ? " wholesale" : ""}`, tier));
+  byId("summary-state").textContent = state.previewLoading ? "Calculando valores…" : "Em elaboração";
+  byId("threshold-message").textContent = !quantity ? `Preço de lojista a partir de ${unitLabel(threshold)}.` : remaining ? `Faltam ${unitLabel(remaining)} para o preço de lojista.` : "Quantidade mínima de lojista atingida.";
+  byId("threshold-progress").max = threshold;
+  byId("threshold-progress").value = Math.min(quantity, threshold);
+  byId("summary-total").textContent = !quantity ? moneyFormat.format(0) : estimate?.total == null ? "—" : moneyFormat.format(estimate.total);
+  const warning = byId("summary-message");
+  warning.replaceChildren();
+  warning.hidden = true;
+  if (state.previewError) {
+    const retry = element("button", "text-button", "Recalcular");
+    retry.type = "button";
+    retry.addEventListener("click", () => void updatePreview());
+    warning.append(element("span", "", `${state.previewError} `), retry);
+    warning.hidden = false;
+  } else if (missingPrices()) {
+    warning.append(element("span", "", "Há itens sem preço para a tabela aplicada. "), link("Cadastrar preços", "#precos"));
+    warning.hidden = false;
+  }
+  byId("quote-preview-pdf").disabled = state.issueBusy || state.draft.length === 0;
+  const issue = byId("quote-issue");
+  issue.disabled = state.issueBusy || !estimate || !quantity || missingPrices();
+  issue.querySelector("span").textContent = state.issueBusy ? "Emitindo…" : "Emitir orçamento";
+}
+
+function resetPdfPreview() {
+  state.pdfPreviewRequest?.abort();
+  state.pdfPreviewRequest = null;
+  const frame = byId("preview-pdf-frame");
+  frame.hidden = true;
+  frame.removeAttribute("src");
+  byId("preview-pdf-actions").hidden = true;
+  byId("preview-pdf-open").removeAttribute("href");
+  byId("preview-pdf-download").removeAttribute("href");
+  if (state.pdfPreviewUrl) {
+    URL.revokeObjectURL(state.pdfPreviewUrl);
+    state.pdfPreviewUrl = null;
+  }
+}
+
+async function showPdfPreview() {
+  const dialog = byId("preview-pdf-dialog");
+  if (dialog.open || state.issueBusy || !state.draft.length) return;
+
+  const body = { client: readQuoteClient(byId("client-form")), items: draftItems() };
+  resetPdfPreview();
+  const request = new AbortController();
+  state.pdfPreviewRequest = request;
+  const status = byId("preview-pdf-status");
+  status.classList.remove("form-error");
+  status.textContent = "Gerando prévia do PDF…";
+  status.hidden = false;
+  dialog.showModal();
+
+  try {
+    const pdf = await api("/api/quotes/preview/pdf", { method: "POST", body, pdf: true, signal: request.signal });
+    if (request.signal.aborted || !dialog.open) return;
+    if (!pdf?.size) throw new Error("O sistema retornou um PDF vazio.");
+    const url = URL.createObjectURL(pdf);
+    state.pdfPreviewUrl = url;
+    byId("preview-pdf-open").href = url;
+    byId("preview-pdf-download").href = url;
+    const frame = byId("preview-pdf-frame");
+    frame.src = url;
+    frame.hidden = false;
+    byId("preview-pdf-actions").hidden = false;
+    status.hidden = true;
+  } catch (error) {
+    if (request.signal.aborted || !dialog.open) return;
+    status.classList.add("form-error");
+    status.textContent = error.message;
+  } finally {
+    if (state.pdfPreviewRequest === request) state.pdfPreviewRequest = null;
+  }
+}
+
+function generateRequestId() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+function setQuoteBusy(busy) {
+  state.issueBusy = busy;
+  for (const control of byId("client-form").elements) control.disabled = busy;
+  byId("item-cancel").disabled = busy;
+  renderManualCatalog();
+  renderManualRows();
+  renderSummary();
+  renderAIItems();
+}
+
+async function issueQuote() {
+  if (state.issueBusy || !state.preview || missingPrices()) return;
+  const form = byId("client-form");
+  const name = byId("client-name");
+  name.value = name.value.trim();
+  if (!form.reportValidity()) return;
+  const client = readQuoteClient(form);
+  const body = { client, items: draftItems(), reviewToken: state.preview.reviewToken };
+  const fingerprint = JSON.stringify(body);
+  if (state.quoteAttempt?.fingerprint !== fingerprint) {
+    state.quoteAttempt = { fingerprint, id: generateRequestId() };
+  }
+  body.requestId = state.quoteAttempt.id;
+  setQuoteBusy(true);
+  try {
+    const issued = await api("/api/quotes", { method: "POST", body });
+    state.quoteAttempt = null;
+    state.draft = [];
+    state.preview = null;
+    form.reset();
+    resetItemEditor();
+    const notice = byId("quote-success");
+    notice.replaceChildren(icon("check"), element("strong", "", `Orçamento nº ${quoteNumber(issued.number)} emitido.`), pdfLink(issued.number, false), pdfLink(issued.number, true));
+    notice.hidden = false;
+    if (state.route?.page !== "manual") toast(`Orçamento nº ${quoteNumber(issued.number)} emitido.`);
+    if (state.route?.page === "history") void loadHistory(0);
+  } catch (error) {
+    toast(error.message);
+    if (error.status === 409 || error.status === 422 || error.status === 400) {
+      await loadCatalog();
+      await updatePreview();
+    }
+  } finally {
+    setQuoteBusy(false);
+  }
+}
+
+function formattedDate(value) {
+  if (!value) return "—";
+  const local = /^\d{4}-\d{2}-\d{2}(?:T[0-9:.]+)?$/.test(value);
+  const date = new Date(local ? `${value.includes("T") ? value : `${value}T12:00:00`}-03:00` : value);
+  return Number.isNaN(date.getTime()) ? "—" : dateFormat.format(date);
+}
+
+async function loadHistory(page) {
+  const revision = ++state.historyRevision;
+  const content = byId("history-content");
+  const pages = byId("history-pages");
+  content.replaceChildren(emptyState("Carregando orçamentos", "Aguarde enquanto os registros são consultados.", "archive"));
+  pages.hidden = true;
+  try {
+    const records = await api(`/api/quotes?page=${page}&size=20`);
+    if (revision !== state.historyRevision) return;
+    if (!records.content.length) {
+      content.replaceChildren(emptyState("Nenhum orçamento emitido", "Os próximos orçamentos aparecerão aqui com o respectivo PDF.", "archive", link("Criar orçamento", "#novo-orcamento")));
+      return;
+    }
+    const rows = records.content.map(record => {
+      const pdfActions = element("div");
+      pdfActions.append(pdfLink(record.number, false, true), pdfLink(record.number, true, true));
+      const status = record.status === "PENDENTE" ? element("span", "state-pill pending", "Pendente") : element("span", "state-pill", record.status);
+      return [[`Nº ${quoteNumber(record.number)}`, "cell-name"], [record.clientName], [formattedDate(record.createdAt)], [numberFormat.format(record.quantity), "numerical"], [moneyFormat.format(record.total), "numerical"], [status], [pdfActions, "cell-actions"]];
+    });
+    content.replaceChildren(table("Orçamentos emitidos", [["Orçamento"], ["Cliente"], ["Data"], ["Unidades", "numerical"], ["Total", "numerical"], ["Status"], ["PDF", "cell-actions"]], rows));
+    if (records.totalPages > 1) {
+      const previous = action("Página anterior", "chevron-left", () => void loadHistory(records.number - 1));
+      const next = action("Próxima página", "chevron-right", () => void loadHistory(records.number + 1));
+      previous.disabled = records.number < 1;
+      next.disabled = records.number >= records.totalPages - 1;
+      pages.replaceChildren(previous, element("span", "", `Página ${records.number + 1} de ${records.totalPages}`), next);
+      pages.hidden = false;
+    }
+  } catch (error) {
+    if (revision !== state.historyRevision) return;
+    const retry = element("button", "button secondary", "Tentar novamente");
+    retry.type = "button";
+    retry.addEventListener("click", () => void loadHistory(page));
+    content.replaceChildren(emptyState("Histórico indisponível", error.message, "archive", retry));
+  }
+}
+
+function normalizedText(value) {
+  return value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase("pt-BR").trim();
+}
+
+function renderCatalog() {
+  const content = byId("catalog-content");
+  const input = byId("catalog-search");
+  input.disabled = !state.catalog?.length;
+  if (!state.catalog) {
+    content.replaceChildren(emptyState(state.catalogError ? "Catálogo indisponível" : "Carregando catálogo", state.catalogError ?? "Aguarde enquanto os modelos são consultados.", "boxes"));
+    return;
+  }
+  const search = normalizedText(input.value);
+  const products = state.catalog.filter(product => normalizedText(product.name).includes(search));
+  if (!products.length) {
+    content.replaceChildren(emptyState(search ? "Nenhum modelo encontrado" : "Nenhum modelo cadastrado", search ? "Tente buscar por outro nome." : "Cadastre um modelo para disponibilizar iscas no orçamento.", "boxes"));
+    return;
+  }
+  const rows = products.map(product => {
+    const active = product.variants.filter(variant => variant.active);
+    const weights = [...new Set(active.map(variant => variant.weight))].sort((a, b) => a - b).map(weight => `${weight} g`).join(", ");
+    const colors = new Set(active.map(variant => variant.color)).size;
+    const status = product.active ? element("span", "state-pill active", "Ativo") : element("span", "state-pill", "Inativo");
+    const edit = action(`Editar ${product.name}`, "edit", () => openCatalogEditor(product));
+    return [[product.name, "cell-name"], [weights || "—"], [numberFormat.format(colors), "numerical"], [numberFormat.format(active.length), "numerical"], [status], [edit, "cell-actions"]];
+  });
+  content.replaceChildren(table("Modelos cadastrados", [["Modelo"], ["Gramaturas ativas"], ["Cores", "numerical"], ["Combinações", "numerical"], ["Status"], ["Ações", "cell-actions"]], rows));
+}
+
+function openCatalogEditor(product = null) {
+  state.catalogModel = product;
+  state.catalogVariants = product?.variants.map(({ weight, color, active }) => ({ weight, color, active })) ?? [];
+  byId("catalog-dialog-heading").textContent = product ? "Editar modelo" : "Novo modelo";
+  byId("catalog-name").value = product?.name ?? "";
+  byId("catalog-active").checked = product?.active ?? true;
+  byId("catalog-weights").value = "";
+  byId("catalog-colors").value = "";
+  formFeedback("catalog-error", "");
+  renderCatalogVariants();
+  byId("catalog-dialog").showModal();
+  byId("catalog-name").focus();
+}
+
+function renderCatalogVariants() {
+  const wrapper = byId("dialog-variants");
+  if (!state.catalogVariants.length) {
+    wrapper.replaceChildren();
+    return;
+  }
+  const variants = [...state.catalogVariants].sort((first, second) => first.weight - second.weight || first.color.localeCompare(second.color, "pt-BR"));
+  const rows = variants.map(variant => {
+    const active = document.createElement("input");
+    active.type = "checkbox";
+    active.checked = variant.active;
+    active.setAttribute("aria-label", `Ativar ${variant.weight} g, cor ${variant.color}`);
+    active.addEventListener("change", () => { variant.active = active.checked; });
+    const remove = action(`Remover ${variant.weight} g, cor ${variant.color}`, "trash", () => {
+      state.catalogVariants = state.catalogVariants.filter(entry => entry !== variant);
+      renderCatalogVariants();
+    }, "danger");
+    active.disabled = state.catalogSaving;
+    remove.disabled = state.catalogSaving;
+    return [[`${variant.weight} g`], [variant.color], [active], [remove, "cell-actions"]];
+  });
+  wrapper.replaceChildren(table("Combinações do modelo", [["Gramatura"], ["Cor"], ["Ativa"], ["Ações", "cell-actions"]], rows));
+}
+
+function addCombinations() {
+  const weightField = byId("catalog-weights");
+  const colorField = byId("catalog-colors");
+  const weightsText = weightField.value.split(/[,;\s]+/u).filter(Boolean);
+  const weights = [...new Set(weightsText.map(Number))];
+  const colors = [...new Set(colorField.value.toUpperCase().split(/[,;\s]+/u).filter(Boolean))];
+  if (!weights.length || !colors.length || weightsText.some(weight => !/^\d+$/u.test(weight)) || weights.some(weight => !Number.isInteger(weight) || weight < 1 || weight > 2147483647)) {
+    formFeedback("catalog-error", "Informe pelo menos uma gramatura inteira positiva e um código de cor.");
+    return false;
+  }
+  if (colors.some(color => !/^[A-Z0-9][A-Z0-9-]{0,15}$/u.test(color))) {
+    formFeedback("catalog-error", "Use até 16 letras, números ou hífens em cada código de cor. Comece com uma letra ou um número.");
+    return false;
+  }
+  const entries = new Map(state.catalogVariants.map(variant => [keyForVariant(variant), variant]));
+  for (const weight of weights) {
+    for (const color of colors) {
+      const variant = { weight, color, active: true };
+      entries.set(keyForVariant(variant), variant);
+      if (entries.size > 2000) {
+        formFeedback("catalog-error", "Cada modelo admite até 2.000 combinações.");
+        return false;
+      }
+    }
+  }
+  state.catalogVariants = [...entries.values()];
+  weightField.value = "";
+  colorField.value = "";
+  formFeedback("catalog-error", "");
+  renderCatalogVariants();
+  return true;
+}
+
+function setCatalogSaving(saving) {
+  state.catalogSaving = saving;
+  for (const control of byId("catalog-form").elements) control.disabled = saving;
+  byId("catalog-save").textContent = saving ? "Salvando…" : "Salvar modelo";
+}
+
+async function saveProduct(event) {
+  event.preventDefault();
+  if (state.catalogSaving) return;
+  if ((byId("catalog-weights").value.trim() || byId("catalog-colors").value.trim()) && !addCombinations()) return;
+  const name = byId("catalog-name").value.trim();
+  const active = byId("catalog-active").checked;
+  const model = state.catalogModel;
+  if (!name) {
+    formFeedback("catalog-error", "Informe o nome do modelo.");
+    return;
+  }
+  formFeedback("catalog-error", "");
+  setCatalogSaving(true);
+  try {
+    await api(model ? `/api/catalog/${model.id}` : "/api/catalog", { method: model ? "PUT" : "POST", body: { name, active, variants: state.catalogVariants } });
+    byId("catalog-dialog").close();
+    toast(model ? "Modelo atualizado." : "Modelo cadastrado.");
+    await loadCatalog();
+    if (state.route?.page === "manual") await updatePreview();
+  } catch (error) {
+    formFeedback("catalog-error", error.message);
+  } finally {
+    setCatalogSaving(false);
+  }
+}
+
+function renderPriceModels() {
+  const select = byId("price-model");
+  const products = (state.catalog ?? []).filter(product => product.variants.length);
+  const choices = products.map(product => [product.id, product.active ? product.name : `${product.name} (inativo)`]);
+  setOptions(select, choices, state.catalog ? "Selecione o modelo" : state.catalogError ? "Catálogo indisponível" : "Carregando…", select.value);
+  if (!select.value && products.length) select.value = String(products[0].id);
+  select.disabled = !products.length || state.priceBusy;
+  renderPrices();
+}
+
+function editPrice(variant, field, value) {
+  const current = state.priceEdits.get(variant.id) ?? { variant };
+  const original = priceInputValue(variant[field]);
+  if (value === original) delete current[field];
+  else current[field] = value;
+  if (current.retailPrice === undefined && current.wholesalePrice === undefined) state.priceEdits.delete(variant.id);
+  else state.priceEdits.set(variant.id, current);
+  byId("price-save").disabled = !state.priceEdits.size || state.priceBusy;
+}
+
+function priceInputValue(price) {
+  return price == null ? "" : Number(price).toFixed(2).replace(".", ",");
+}
+
+function renderPrices() {
+  const product = state.catalog?.find(entry => String(entry.id) === byId("price-model").value);
+  const content = byId("price-content");
+  byId("price-save").disabled = !state.priceEdits.size || state.priceBusy;
+  if (!product) {
+    content.replaceChildren(emptyState(state.catalogError ? "Catálogo indisponível" : "Nenhum modelo disponível", state.catalogError ?? "As combinações cadastradas aparecem aqui para configuração dos preços.", "tag", state.catalog ? link("Abrir catálogo", "#catalogo") : null));
+    return;
+  }
+  const variants = [...product.variants].sort((first, second) => first.weight - second.weight || first.color.localeCompare(second.color, "pt-BR"));
+  const inputFor = (variant, field, label) => {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.inputMode = "decimal";
+    input.maxLength = 13;
+    input.placeholder = "Sem preço";
+    input.value = state.priceEdits.get(variant.id)?.[field] ?? priceInputValue(variant[field]);
+    input.disabled = state.priceBusy;
+    input.setAttribute("aria-label", `Preço de ${label} em reais, ${variant.weight} g, cor ${variant.color}`);
+    input.addEventListener("input", () => editPrice(variant, field, input.value));
+    return input;
+  };
+  const rows = variants.map(variant => [
+    [`${variant.weight} g`, "cell-name"],
+    [variant.color],
+    [inputFor(variant, "retailPrice", "consumidor final")],
+    [inputFor(variant, "wholesalePrice", "lojista")],
+    [element("span", `state-pill${variant.active && product.active ? " active" : ""}`, variant.active && product.active ? "Ativa" : "Inativa")]
+  ]);
+  content.replaceChildren(table(`Preços de ${product.name}`, [["Gramatura"], ["Cor"], ["Consumidor final (R$)"], ["Lojista (R$)"], ["Combinação"]], rows, "price-table"));
+}
+
+function normalizeMoney(value) {
+  const amount = value.trim().replace(",", ".");
+  if (!amount) return null;
+  if (!/^\d{1,10}(?:\.\d{1,2})?$/u.test(amount)) throw new Error("Informe um valor de até 10 dígitos e duas casas decimais, ou deixe o campo vazio.");
+  return amount;
+}
+
+async function savePrices(event) {
+  event.preventDefault();
+  if (!state.priceEdits.size || state.priceBusy) return;
+  formFeedback("price-error", "");
+  let variants;
+  try {
+    variants = [...state.priceEdits].map(([id, edit]) => ({
+      id,
+      retailPrice: edit.retailPrice === undefined ? edit.variant.retailPrice : normalizeMoney(edit.retailPrice),
+      wholesalePrice: edit.wholesalePrice === undefined ? edit.variant.wholesalePrice : normalizeMoney(edit.wholesalePrice)
+    }));
+  } catch (error) {
+    formFeedback("price-error", error.message);
+    return;
+  }
+  state.priceBusy = true;
+  const save = byId("price-save");
+  save.lastChild.textContent = "Salvando…";
+  renderPriceModels();
+  try {
+    await api("/api/catalog/prices", { method: "PUT", body: { variants } });
+    state.priceEdits.clear();
+    toast("Preços atualizados.");
+    await loadCatalog();
+    if (state.route?.page === "manual") await updatePreview();
+  } catch (error) {
+    formFeedback("price-error", error.message);
+  } finally {
+    state.priceBusy = false;
+    save.lastChild.textContent = "Salvar preços";
+    renderPriceModels();
+  }
+}
+
+async function loadSettings() {
+  try {
+    const settings = await api("/api/settings");
+    state.threshold = settings.wholesaleThreshold;
+    byId("settings-threshold").value = state.threshold;
+    byId("settings-threshold").disabled = false;
+    byId("settings-save").disabled = false;
+    formFeedback("settings-error", "");
+    renderSummary();
+  } catch (error) {
+    formFeedback("settings-error", error.message);
+  }
+}
+
+async function saveSettings(event) {
+  event.preventDefault();
+  if (state.settingsBusy) return;
+  const field = byId("settings-threshold");
+  const save = byId("settings-save");
+  const wholesaleThreshold = Number(field.value);
+  state.settingsBusy = true;
+  save.disabled = true;
+  field.disabled = true;
+  formFeedback("settings-error", "");
+  try {
+    const result = await api("/api/settings", { method: "PUT", body: { wholesaleThreshold } });
+    state.threshold = result.wholesaleThreshold;
+    field.value = state.threshold;
+    renderSummary();
+    if (state.route?.page === "manual") await updatePreview();
+    toast("Quantidade mínima atualizada.");
+  } catch (error) {
+    formFeedback("settings-error", error.message);
+  } finally {
+    state.settingsBusy = false;
+    save.disabled = false;
+    field.disabled = false;
+  }
+}
+
+function appendChat(text, role = "assistant", questions = []) {
+  const log = byId("chat-log");
+  const row = element("div", `chat-row ${role}`);
+  const bubble = element("div", "chat-bubble");
+  bubble.append(element("p", "", text));
+  if (questions.length) {
+    const list = element("ul");
+    list.append(...questions.map(question => element("li", "", question)));
+    bubble.append(list);
+  }
+  row.append(element("strong", "", role === "admin" ? "Você" : "URUTAU AI"), bubble);
+  log.append(row);
+  log.scrollTop = log.scrollHeight;
+  return row;
+}
+
+function initializeChat() {
+  byId("chat-log").replaceChildren();
+  appendChat("Cole a mensagem de pedido aqui. Vou identificar as iscas e perguntar o que estiver faltando.");
+}
+
+async function checkAI() {
+  const warning = byId("ai-warning");
+  try {
+    const status = await api("/api/ai");
+    state.aiOnline = true;
+    warning.replaceChildren();
+    warning.hidden = status.configured;
+    if (!status.configured) {
+      warning.append(element("span", "", "Pedidos do catálogo funcionam. Configure o provedor de IA para interpretar mensagens livres."), link("Criar orçamento manual", "#novo-orcamento"));
+    }
+  } catch (error) {
+    state.aiOnline = false;
+    const retry = element("button", "text-button", "Tentar novamente");
+    retry.type = "button";
+    retry.addEventListener("click", () => void checkAI());
+    warning.replaceChildren(element("span", "", error.message), retry);
+    warning.hidden = false;
+  } finally {
+    renderAIControl();
+  }
+}
+
+function renderAIControl() {
+  const blocked = state.aiBusy || !state.aiOnline;
+  byId("chat-message").disabled = blocked;
+  byId("chat-send").disabled = blocked;
+  byId("chat-send").querySelector("span").textContent = state.aiBusy ? "Processando…" : "Enviar";
+  byId("ai-new").disabled = blocked;
+  renderAIItems();
+}
+
+function renderAIItems() {
+  const items = state.conversation?.items ?? [];
+  const quantity = items.reduce((sum, item) => sum + item.quantity, 0);
+  byId("ai-count").textContent = items.length ? `${unitLabel(quantity)} · ${items.length} ${items.length === 1 ? "combinação" : "combinações"}` : "Nenhum item identificado";
+  byId("ai-review").disabled = !items.length || state.conversation.needsClarification || state.aiBusy || state.issueBusy;
+  const container = byId("ai-items");
+  container.replaceChildren();
+  if (items.length) {
+    const list = element("ul", "ai-item-list");
+    items.forEach(item => {
+      const row = element("li");
+      const details = element("div");
+      details.append(element("strong", "", item.model), element("small", "", `${item.weight} g · Cor ${item.color}`));
+      row.append(details, element("span", "tier-pill", unitLabel(item.quantity)));
+      list.append(row);
+    });
+    container.append(list);
+  }
+}
+
+async function startConversation() {
+  if (state.aiBusy || !state.aiOnline) return;
+  state.aiBusy = true;
+  renderAIControl();
+  try {
+    state.conversation = await api("/api/ai/conversations", { method: "POST" });
+    byId("chat-message").value = "";
+    initializeChat();
+  } catch (error) {
+    appendChat(error.message, "error");
+  } finally {
+    state.aiBusy = false;
+    renderAIControl();
+    if (state.route?.page === "ai") byId("chat-message").focus();
+  }
+}
+
+async function sendMessage(event) {
+  event.preventDefault();
+  if (state.aiBusy || !state.aiOnline) return;
+  const field = byId("chat-message");
+  const message = field.value.trim();
+  if (!message) return;
+  appendChat(message, "admin");
+  field.value = "";
+  state.aiBusy = true;
+  renderAIControl();
+  const progress = appendChat("Interpretando a mensagem…");
+  try {
+    if (!state.conversation) state.conversation = await api("/api/ai/conversations", { method: "POST" });
+    state.conversation = await api(`/api/ai/conversations/${encodeURIComponent(state.conversation.id)}/messages`, { method: "POST", body: { message } });
+    progress.remove();
+    if (state.conversation.needsClarification) {
+      appendChat("Preciso esclarecer alguns detalhes com você.", "assistant", state.conversation.questions);
+    } else {
+      appendChat(state.conversation.items.length ? "As iscas foram identificadas. Você já pode revisar os itens no orçamento." : "Ainda não há itens para revisar. Informe os produtos que deseja incluir.");
+    }
+  } catch (error) {
+    progress.remove();
+    field.value = message;
+    if (error.status === 404) state.conversation = null;
+    appendChat(error.message, "error");
+  } finally {
+    state.aiBusy = false;
+    renderAIControl();
+    if (state.route?.page === "ai") field.focus();
+  }
+}
+
+function reviewConversation() {
+  if (state.aiBusy || state.issueBusy || state.conversation?.needsClarification || !state.conversation?.items.length) return;
+  if (state.draft.length && !window.confirm("Substituir os itens do orçamento atual pelos itens da conversa? Os dados do cliente serão mantidos.")) return;
+  state.draft = state.conversation.items.map(item => ({ ...item }));
+  resetItemEditor();
+  byId("quote-success").hidden = true;
+  location.hash = "novo-orcamento";
+  toast("Itens enviados para revisão no orçamento.");
+}
+
+function bindEvents() {
+  document.querySelectorAll("svg.icon").forEach(node => { node.setAttribute("aria-hidden", "true"); });
+  document.querySelector(".skip-link").addEventListener("click", event => {
+    event.preventDefault();
+    byId("main").focus();
+  });
+  addEventListener("hashchange", navigate);
+  byId("nav-toggle").addEventListener("click", () => navOpen(byId("nav-toggle").getAttribute("aria-expanded") === "false"));
+  byId("nav-overlay").addEventListener("click", () => { navOpen(false); byId("nav-toggle").focus(); });
+  addEventListener("keydown", event => {
+    if (event.key === "Escape" && byId("sidebar").classList.contains("is-open")) {
+      navOpen(false);
+      byId("nav-toggle").focus();
+    }
+  });
+  byId("client-form").addEventListener("submit", event => event.preventDefault());
+  byId("item-model").addEventListener("change", () => renderManualCatalog({ weight: "", variantId: "" }));
+  byId("item-weight").addEventListener("change", () => renderManualCatalog({ variantId: "" }));
+  byId("item-color").addEventListener("change", () => { byId("item-add").disabled = !byId("item-color").value; });
+  byId("item-form").addEventListener("submit", addItem);
+  byId("item-cancel").addEventListener("click", resetItemEditor);
+  const previewDialog = byId("preview-pdf-dialog");
+  byId("quote-preview-pdf").addEventListener("click", () => void showPdfPreview());
+  byId("preview-pdf-close").addEventListener("click", () => previewDialog.close());
+  previewDialog.addEventListener("close", () => { if (!previewDialog.open) resetPdfPreview(); });
+  byId("quote-issue").addEventListener("click", () => void issueQuote());
+  byId("catalog-search").addEventListener("input", renderCatalog);
+  byId("catalog-new").addEventListener("click", () => openCatalogEditor());
+  ["catalog-close", "catalog-cancel"].forEach(id => byId(id).addEventListener("click", () => byId("catalog-dialog").close()));
+  byId("catalog-dialog").addEventListener("cancel", event => { if (state.catalogSaving) event.preventDefault(); });
+  byId("add-combinations").addEventListener("click", addCombinations);
+  byId("catalog-form").addEventListener("submit", saveProduct);
+  byId("price-model").addEventListener("change", renderPrices);
+  byId("price-form").addEventListener("submit", savePrices);
+  byId("settings-form").addEventListener("submit", saveSettings);
+  byId("ai-new").addEventListener("click", () => void startConversation());
+  byId("chat-form").addEventListener("submit", sendMessage);
+  byId("ai-review").addEventListener("click", reviewConversation);
+}
+
+async function initialize() {
+  bindEvents();
+  const today = new Date();
+  byId("header-date").dateTime = today.toISOString();
+  byId("header-date").textContent = currentDateFormat.format(today);
+  const states = "AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO".split(" ");
+  setOptions(byId("client-state"), states.map(code => [code, code]), "Selecione");
+  initializeChat();
+  renderManualRows();
+  navigate();
+  try {
+    state.session = await api("/api/session");
+    byId("account-name").textContent = state.session.username;
+    byId("account-avatar").textContent = state.session.username.slice(0, 2).toLocaleUpperCase("pt-BR");
+    byId("logout-csrf").value = state.session.csrfToken;
+    navigate();
+    if (state.route?.page !== "settings") void loadSettings();
+  } catch (error) {
+    if (error.status !== 401) toast(error.message);
+  }
+}
+
+void initialize();

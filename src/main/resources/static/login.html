@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#19191c">
+  <title>Entrar | Urutau Jigs</title>
+  <link rel="stylesheet" href="/app.css">
+  <script src="/login.js" defer></script>
+</head>
+<body class="login-page">
+  <main class="login-card" aria-labelledby="login-heading">
+    <div class="login-brand"><span class="brand-logo"><img src="/assets/urutau-logo.png" width="615" height="615" alt="Urutau Jigs"></span></div>
+    <div class="login-content">
+      <div class="login-title"><h1 id="login-heading">Área administrativa</h1><p>Entre para acessar o sistema de orçamentos.</p></div>
+      <div id="login-message" class="notice login-message" role="status" hidden></div>
+      <form id="login-form" class="login-form" action="/login" method="post">
+        <input id="login-csrf" type="hidden" name="_csrf">
+        <label class="field"><span>Usuário</span><input name="username" autocomplete="username" required autofocus></label>
+        <label class="field"><span>Senha</span><input name="password" type="password" autocomplete="current-password" required></label>
+        <button id="login-submit" class="button primary" type="submit" disabled><svg class="icon" aria-hidden="true"><use href="/icons.svg#lock"/></svg>Entrar</button>
+      </form>
+      <noscript><p class="form-error">Ative o JavaScript para entrar no sistema.</p></noscript>
+    </div>
+  </main>
+</body>
+</html>
