@@ -42,6 +42,39 @@ O endereço padrão é somente local. Para acesso compartilhado, publique a apli
 
 As contas são configuradas por variáveis de ambiente. Na inicialização, o Spring Security transforma as senhas em hashes BCrypt em memória. Os formulários usam sessão e proteção CSRF. A aplicação valida os dois acessos antes de iniciar.
 
+## Publicar no Railway
+
+### Criar o projeto e conectar o GitHub
+
+1. No painel do Railway, escolha **New Project → Empty Project**. Use o ambiente `production` e confirme que o workspace está no **Free** ou **Trial** e tem crédito disponível. A aplicação e o MySQL consomem o crédito do mesmo workspace. Quando o crédito do Free acaba, os serviços param até a renovação da cota. [Plano Free e Trial](https://docs.railway.com/pricing/free-plan)
+2. No canvas do projeto, escolha **New → Database → MySQL**. Mantenha o serviço com o nome `MySQL` e na rede privada. No mesmo ambiente, crie um **Empty Service** com o nome `urutau-jigs` para a aplicação. Use as credenciais do banco geradas pelo Railway. [MySQL no Railway](https://docs.railway.com/databases/mysql)
+3. No serviço `urutau-jigs`, abra **Variables → RAW Editor** e insira o bloco abaixo. Substitua os marcadores pelos dois nomes de acesso e pelas senhas correspondentes. Use nomes distintos e senhas de pelo menos 12 caracteres, até 72 bytes. Preencha a chave do Gemini para interpretar mensagens livres. Guarde os valores reais apenas nas variáveis do serviço. [Variáveis de serviço](https://docs.railway.com/variables)
+
+   ```dotenv
+   DB_URL=jdbc:mysql://${{MySQL.MYSQLHOST}}:${{MySQL.MYSQLPORT}}/${{MySQL.MYSQLDATABASE}}?connectionTimeZone=UTC
+   DB_USER=${{MySQL.MYSQLUSER}}
+   DB_PASSWORD=${{MySQL.MYSQLPASSWORD}}
+   ADMIN_1_USERNAME=SUBSTITUA_USUARIO_1
+   ADMIN_1_PASSWORD=SUBSTITUA_SENHA_1
+   ADMIN_2_USERNAME=SUBSTITUA_USUARIO_2
+   ADMIN_2_PASSWORD=SUBSTITUA_SENHA_2
+   AI_PROVIDER=gemini
+   GEMINI_API_KEY=SUBSTITUA_CHAVE_GEMINI
+   ```
+
+   As expressões `${{MySQL.NOME_DA_VARIAVEL}}` são referências do Railway e devem ser coladas como estão. `GEMINI_MODEL` é opcional e usa `gemini-3.5-flash-lite` quando vazio. Para escolher outro provedor, siga a seção [Provedor alternativo](#provedor-alternativo).
+
+4. Em **Settings → Source → Connect Repo**, conecte `kaykysoarex/urutau-jigs`. Se o GitHub solicitar a instalação do aplicativo Railway, conceda acesso ao repositório oficial. Selecione `main` como branch de deploy e mantenha **Autodeploy** habilitado. Deixe o **Root Directory** na raiz do repositório e **Wait for CI** desabilitado. O Railway detecta o `Dockerfile` na raiz e a construção da imagem executa os testes Maven. Deixe o **Start Command** no padrão da imagem. Cada push na `main` aciona um novo deploy. [Repositório oficial](https://github.com/kaykysoarex/urutau-jigs) · [Autodeploy pelo GitHub](https://docs.railway.com/deployments/github-autodeploys) · [Detecção do Dockerfile](https://docs.railway.com/builds/dockerfiles)
+
+### Aplicar e publicar
+
+1. Em **Settings → Deploy** do serviço da aplicação, configure **Healthcheck Path** como `/login.html` e mantenha **Healthcheck Timeout** em **300 segundos**. O `Dockerfile` ativa o perfil `railway` e o Spring Boot escuta em `0.0.0.0` na porta dinâmica `PORT` injetada pelo Railway. [Verificação de saúde e porta](https://docs.railway.com/deployments/healthchecks)
+2. Revise as alterações pendentes no canvas e clique em **Deploy**. Aguarde a aplicação ficar **Active**. O Flyway cria as tabelas e carrega o catálogo inicial no MySQL na primeira inicialização. [Aplicar alterações](https://docs.railway.com/deployments/staged-changes)
+3. No serviço `urutau-jigs`, abra **Settings → Networking → Public Networking → Generate Domain**. Use a porta detectada pelo Railway e abra o domínio gerado com `https://`. O Railway emite o certificado e termina o TLS na borda. O perfil da aplicação respeita o cabeçalho de protocolo encaminhado e ativa o atributo `Secure` do cookie de sessão. [HTTPS e domínio público](https://docs.railway.com/networking/public-networking) · [Cabeçalhos do proxy](https://docs.railway.com/networking/public-networking/specs-and-limits)
+4. Teste o login com as duas contas e abra o catálogo. Para conferir o Gemini, envie uma mensagem livre de teste na **URUTAU AI**, como `Quero três Spinner de 12g na cor 03`.
+
+Mantenha uma réplica da aplicação, pois as sessões administrativas e as conversas em andamento ficam em memória. Os dados gravados no MySQL persistem após novos deploys. O arquivo H2 local, seus clientes, tabelas de preço e orçamentos permanecem na instalação local. Uma eventual migração desses registros exige uma transferência separada.
+
 ## Catálogo e preços
 
 - A carga inicial contém nove modelos e 124 combinações de gramatura e cor. A migração utiliza os dados oficiais verificados. [Catálogo](https://catalogo-urutau.vercel.app/) · [Dados canônicos](https://catalogo-urutau.vercel.app/catalog-data.js) · [Validação da página de origem](https://catalogo-urutau.vercel.app/script.js)
