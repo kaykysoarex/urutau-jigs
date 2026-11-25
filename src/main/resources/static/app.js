@@ -18,6 +18,8 @@ const state = {
   threshold: 30,
   draft: [],
   editingItem: null,
+  editingQuantity: null,
+  selectedColors: new Map(),
   preview: null,
   previewError: null,
   previewLoading: false,
@@ -45,6 +47,8 @@ const unitLabel = value => `${numberFormat.format(value)} ${value === 1 ? "unida
 const quoteNumber = value => String(value).padStart(5, "0");
 const keyForVariant = ({ weight, color }) => `${weight}/${color}`;
 const activeProducts = () => (state.catalog ?? []).filter(product => product.active && product.variants.some(variant => variant.active));
+const maxItemQuantity = 100000;
+const maxQuoteItems = 250;
 
 class RequestError extends Error {
   constructor(status, message) {
@@ -261,22 +265,17 @@ function renderManualCatalog(pick = {}) {
   const models = activeProducts();
   const modelSelect = byId("item-model");
   const weightSelect = byId("item-weight");
-  const colorSelect = byId("item-color");
   const modelId = pick.modelId ?? modelSelect.value;
   const weight = pick.weight ?? weightSelect.value;
-  const variantId = pick.variantId ?? colorSelect.value;
   setOptions(modelSelect, models.map(model => [model.id, model.name]), state.catalog ? "Selecione o modelo" : state.catalogError ? "Catálogo indisponível" : "Carregando…", modelId);
   const selected = models.find(model => String(model.id) === modelSelect.value);
   const active = selected?.variants.filter(variant => variant.active) ?? [];
   const weights = [...new Set(active.map(variant => variant.weight))].sort((a, b) => a - b);
   setOptions(weightSelect, weights.map(grams => [grams, `${grams} g`]), "Selecione", weight);
   const colors = active.filter(variant => String(variant.weight) === weightSelect.value).sort((a, b) => a.color.localeCompare(b.color, "pt-BR"));
-  setOptions(colorSelect, colors.map(variant => [variant.id, variant.color]), "Selecione", variantId);
   modelSelect.disabled = !models.length || state.issueBusy;
   weightSelect.disabled = !selected || state.issueBusy;
-  colorSelect.disabled = !colors.length || state.issueBusy;
-  byId("item-quantity").disabled = state.issueBusy || !models.length;
-  byId("item-add").disabled = !colorSelect.value || state.issueBusy;
+  renderItemColors(colors);
 
   const note = byId("catalog-message");
   note.replaceChildren();
@@ -293,6 +292,94 @@ function renderManualCatalog(pick = {}) {
   }
 }
 
+function renderItemColors(colors) {
+  const grid = byId("item-colors");
+  const editing = state.editingItem !== null;
+  const available = new Set(colors.map(color => color.id));
+  for (const id of state.selectedColors.keys()) {
+    if (!available.has(id)) state.selectedColors.delete(id);
+  }
+  grid.replaceChildren(...colors.map(({ id, color }) => {
+    const option = element("div", "item-color-option");
+    const label = element("label", "item-color-check");
+    const choice = element("input");
+    choice.type = editing ? "radio" : "checkbox";
+    choice.name = "quote-color";
+    choice.value = id;
+    label.append(choice, element("span", "item-color-code", `Cor ${color}`));
+    const quantity = element("input", "item-color-quantity");
+    quantity.type = "number";
+    quantity.inputMode = "numeric";
+    quantity.min = "1";
+    quantity.max = String(maxItemQuantity);
+    quantity.step = "1";
+    quantity.setAttribute("aria-label", `Quantidade da cor ${color}`);
+    option.append(label, quantity);
+    return option;
+  }));
+  grid.hidden = colors.length === 0;
+  byId("item-colors-empty").hidden = colors.length > 0;
+  byId("item-bulk-tools").hidden = editing;
+  byId("item-color-summary").hidden = editing;
+  updateItemControls();
+}
+
+function readItemQuantity(value) {
+  return /^\d+$/u.test(value) && Number(value) >= 1 && Number(value) <= maxItemQuantity ? Number(value) : null;
+}
+
+function updateItemControls(message = "") {
+  const fields = byId("item-colors").children;
+  const count = state.selectedColors.size;
+  const locked = state.issueBusy;
+  const defaultQuantity = byId("item-quantity");
+  let total = 0;
+  let hasInvalidQuantity = false;
+  for (const field of fields) {
+    const choice = field.querySelector("[name='quote-color']");
+    const quantity = field.querySelector(".item-color-quantity");
+    const raw = state.selectedColors.get(Number(choice.value));
+    const selected = raw !== undefined;
+    const amount = selected ? readItemQuantity(raw) : null;
+    choice.checked = selected;
+    choice.disabled = locked;
+    quantity.disabled = locked || !selected;
+    if (quantity.value !== (raw ?? "")) quantity.value = raw ?? "";
+    quantity.setAttribute("aria-invalid", String(selected && amount === null));
+    total += amount ?? 0;
+    hasInvalidQuantity ||= selected && amount === null;
+  }
+  defaultQuantity.disabled = locked || !fields.length || state.editingItem !== null;
+  const validDefault = readItemQuantity(defaultQuantity.value) !== null;
+  defaultQuantity.setAttribute("aria-invalid", String(!defaultQuantity.disabled && !validDefault));
+  byId("item-select-all").disabled = locked || count === fields.length;
+  byId("item-clear-all").disabled = locked || !count;
+  byId("item-apply-quantity").disabled = locked || !count || !validDefault;
+  byId("item-selected-count").textContent = numberFormat.format(count);
+  byId("item-selected-total").textContent = hasInvalidQuantity ? "—" : numberFormat.format(total);
+  byId("item-add").disabled = locked || !count || hasInvalidQuantity;
+  formFeedback("item-error", message || (hasInvalidQuantity ? "Informe uma quantidade inteira entre 1 e 100.000 para cada cor selecionada." : ""));
+}
+
+function changeColorSelection(event) {
+  const choice = event.target;
+  if (choice.name !== "quote-color") return;
+  const id = Number(choice.value);
+  if (state.editingItem !== null) state.selectedColors.clear();
+  if (choice.checked) state.selectedColors.set(id, state.editingQuantity ?? byId("item-quantity").value);
+  else state.selectedColors.delete(id);
+  updateItemControls();
+}
+
+function changeColorQuantity(event) {
+  const quantity = event.target;
+  if (!quantity.matches(".item-color-quantity")) return;
+  const id = Number(quantity.closest(".item-color-option").querySelector("[name='quote-color']").value);
+  if (state.editingItem !== null) state.editingQuantity = quantity.value;
+  state.selectedColors.set(id, quantity.value);
+  updateItemControls();
+}
+
 function pickVariant(id) {
   for (const product of activeProducts()) {
     const match = product.variants.find(variant => variant.active && variant.id === id);
@@ -303,11 +390,12 @@ function pickVariant(id) {
 
 function resetItemEditor() {
   state.editingItem = null;
+  state.editingQuantity = null;
+  state.selectedColors.clear();
   byId("item-quantity").value = "1";
-  byId("item-add").querySelector("span").textContent = "Adicionar";
+  byId("item-add").querySelector("span").textContent = "Adicionar ao orçamento";
   byId("item-cancel").hidden = true;
-  formFeedback("item-error", "");
-  renderManualCatalog({ modelId: "", weight: "", variantId: "" });
+  renderManualCatalog({ modelId: "", weight: "" });
 }
 
 function editItem(id) {
@@ -315,52 +403,59 @@ function editItem(id) {
   if (!draft || state.issueBusy) return;
   const variant = pickVariant(id);
   state.editingItem = id;
+  state.editingQuantity = String(draft.quantity);
+  state.selectedColors.clear();
+  if (variant) state.selectedColors.set(id, state.editingQuantity);
   byId("item-add").querySelector("span").textContent = "Salvar item";
   byId("item-cancel").hidden = false;
-  byId("item-quantity").value = draft.quantity;
-  renderManualCatalog(variant ? { modelId: variant.modelId, weight: variant.weight, variantId: id } : { modelId: "", weight: "", variantId: "" });
+  renderManualCatalog(variant ? { modelId: variant.modelId, weight: variant.weight } : { modelId: "", weight: "" });
   if (!variant) formFeedback("item-error", "Selecione uma combinação ativa para substituir este item.");
   byId("item-model").focus();
 }
 
 function draftChanged() {
   byId("quote-success").hidden = true;
-  renderManualRows();
   void updatePreview();
 }
 
-function addItem(event) {
+function addItems(event) {
   event.preventDefault();
-  if (state.issueBusy) return;
-  const component = pickVariant(Number(byId("item-color").value));
-  const quantity = Number(byId("item-quantity").value);
-  if (!component || !Number.isInteger(quantity) || quantity < 1 || quantity > 100000) {
-    formFeedback("item-error", "Selecione uma combinação ativa e informe uma quantidade entre 1 e 100.000.");
-    return;
-  }
-  const kept = state.draft.filter(item => item.variantId !== state.editingItem);
-  const existing = kept.find(item => item.variantId === component.id);
-  if ((existing?.quantity ?? 0) + quantity > 100000) {
-    formFeedback("item-error", "Cada combinação admite até 100.000 unidades por orçamento.");
-    return;
-  }
-  if (!existing && kept.length >= 250) {
-    formFeedback("item-error", "Cada orçamento admite até 250 combinações.");
-    return;
-  }
-  if (existing) {
-    state.draft = kept.map(item => item.variantId === component.id ? { ...item, quantity: item.quantity + quantity } : item);
-  } else {
-    const item = { variantId: component.id, model: component.model, weight: component.weight, color: component.color, quantity };
-    if (state.editingItem === null) state.draft = [...kept, item];
-    else state.draft = state.draft.map(line => line.variantId === state.editingItem ? item : line);
-  }
-  const selection = { modelId: component.modelId, weight: component.weight, variantId: component.id };
+  if (state.issueBusy || !state.selectedColors.size) return;
   const wasEditing = state.editingItem !== null;
-  resetItemEditor();
-  if (!wasEditing) renderManualCatalog(selection);
+  const nextDraft = new Map(state.draft.map(item => [item.variantId, item]));
+  nextDraft.delete(state.editingItem);
+  let replacement = null;
+  for (const [variantId, raw] of state.selectedColors) {
+    const variant = pickVariant(variantId);
+    const amount = readItemQuantity(raw);
+    if (!variant || amount === null) {
+      updateItemControls("Selecione uma combinação ativa e informe uma quantidade inteira entre 1 e 100.000.");
+      return;
+    }
+    const existing = nextDraft.get(variantId);
+    const quantity = (existing?.quantity ?? 0) + amount;
+    if (quantity > maxItemQuantity) {
+      updateItemControls("Cada combinação admite até 100.000 unidades por orçamento.");
+      return;
+    }
+    const item = { variantId, model: variant.model, weight: variant.weight, color: variant.color, quantity };
+    if (wasEditing && !existing) replacement = item;
+    else nextDraft.set(variantId, item);
+  }
+  const items = [...nextDraft.values()];
+  if (replacement) items.splice(state.draft.findIndex(item => item.variantId === state.editingItem), 0, replacement);
+  if (items.length > maxQuoteItems) {
+    updateItemControls("Cada orçamento admite até 250 combinações.");
+    return;
+  }
+  state.draft = items;
+  if (wasEditing) resetItemEditor();
+  else {
+    state.selectedColors.clear();
+    updateItemControls();
+  }
   draftChanged();
-  byId(wasEditing ? "item-model" : "item-quantity").focus();
+  byId(wasEditing ? "item-model" : "item-select-all").focus();
 }
 
 function removeItem(id) {
@@ -1035,10 +1130,35 @@ function bindEvents() {
     }
   });
   byId("client-form").addEventListener("submit", event => event.preventDefault());
-  byId("item-model").addEventListener("change", () => renderManualCatalog({ weight: "", variantId: "" }));
-  byId("item-weight").addEventListener("change", () => renderManualCatalog({ variantId: "" }));
-  byId("item-color").addEventListener("change", () => { byId("item-add").disabled = !byId("item-color").value; });
-  byId("item-form").addEventListener("submit", addItem);
+  byId("item-model").addEventListener("change", () => {
+    state.selectedColors.clear();
+    renderManualCatalog({ weight: "" });
+  });
+  byId("item-weight").addEventListener("change", () => {
+    state.selectedColors.clear();
+    renderManualCatalog();
+  });
+  byId("item-colors").addEventListener("change", changeColorSelection);
+  byId("item-colors").addEventListener("input", changeColorQuantity);
+  byId("item-quantity").addEventListener("input", () => updateItemControls());
+  byId("item-select-all").addEventListener("click", () => {
+    const quantity = byId("item-quantity").value;
+    for (const choice of byId("item-colors").querySelectorAll("[name='quote-color']:not(:checked)")) {
+      state.selectedColors.set(Number(choice.value), quantity);
+    }
+    updateItemControls();
+  });
+  byId("item-clear-all").addEventListener("click", () => {
+    state.selectedColors.clear();
+    updateItemControls();
+  });
+  byId("item-apply-quantity").addEventListener("click", () => {
+    const quantity = byId("item-quantity").value;
+    if (readItemQuantity(quantity) === null) return;
+    for (const id of state.selectedColors.keys()) state.selectedColors.set(id, quantity);
+    updateItemControls();
+  });
+  byId("item-form").addEventListener("submit", addItems);
   byId("item-cancel").addEventListener("click", resetItemEditor);
   const previewDialog = byId("preview-pdf-dialog");
   byId("quote-preview-pdf").addEventListener("click", () => void showPdfPreview());

@@ -74,17 +74,40 @@
             <section class="panel items-panel" aria-labelledby="items-heading">
               <div class="section-heading">
                 <span class="section-icon"><svg class="icon"><use href="/icons.svg#boxes"/></svg></span>
-                <div><h2 id="items-heading">Itens do orçamento</h2><p>Selecione o modelo, a gramatura e a cor de cada item.</p></div>
+                <div><h2 id="items-heading">Itens do orçamento</h2><p>Adicione uma ou várias cores do mesmo modelo e gramatura.</p></div>
               </div>
               <div class="panel-body">
                 <div id="catalog-message" class="notice" hidden></div>
-                <form id="item-form" class="item-fields">
-                  <label class="field item-model"><span>Modelo</span><select id="item-model" required disabled><option value="">Carregando…</option></select></label>
-                  <label class="field"><span>Gramatura</span><select id="item-weight" required disabled><option value="">Selecione</option></select></label>
-                  <label class="field"><span>Cor</span><select id="item-color" required disabled><option value="">Selecione</option></select></label>
-                  <label class="field quantity-field"><span>Quantidade</span><input id="item-quantity" type="number" min="1" max="100000" step="1" inputmode="numeric" value="1" required></label>
-                  <button id="item-add" class="button primary item-add" type="submit" disabled><svg class="icon"><use href="/icons.svg#plus"/></svg><span>Adicionar</span></button>
-                  <button id="item-cancel" class="button secondary item-cancel" hidden type="button">Cancelar edição</button>
+                <form id="item-form" class="item-fields" novalidate>
+                  <div class="item-variant-fields">
+                    <label class="field"><span>Modelo</span><select id="item-model" required disabled><option value="">Carregando…</option></select></label>
+                    <label class="field"><span>Gramatura</span><select id="item-weight" required disabled><option value="">Selecione</option></select></label>
+                  </div>
+                  <fieldset id="item-color-picker" class="item-color-picker">
+                    <legend>Cores disponíveis</legend>
+                    <div id="item-bulk-tools" class="item-bulk-tools">
+                      <div class="item-selection-tools">
+                        <button id="item-select-all" class="button secondary" type="button" disabled>Selecionar todas</button>
+                        <button id="item-clear-all" class="button secondary" type="button" disabled>Desmarcar todas</button>
+                      </div>
+                      <div class="item-quantity-tools">
+                        <label class="field"><span>Quantidade padrão por cor</span><input id="item-quantity" type="number" min="1" max="100000" step="1" inputmode="numeric" value="1" disabled></label>
+                        <button id="item-apply-quantity" class="button secondary" type="button" disabled>Aplicar quantidade padrão</button>
+                      </div>
+                    </div>
+                    <p id="item-colors-empty" class="item-colors-empty">Selecione o modelo e a gramatura para ver as cores.</p>
+                    <div id="item-colors" class="item-color-grid"></div>
+                  </fieldset>
+                  <div class="item-actions">
+                    <div id="item-color-summary" class="item-color-summary" role="status" aria-atomic="true">
+                      <span>Cores selecionadas <strong id="item-selected-count">0</strong></span>
+                      <span>Unidades selecionadas <strong id="item-selected-total">0</strong></span>
+                    </div>
+                    <div class="item-submit-actions">
+                      <button id="item-cancel" class="button secondary" hidden type="button">Cancelar edição</button>
+                      <button id="item-add" class="button primary" type="submit" disabled><svg class="icon"><use href="/icons.svg#plus"/></svg><span>Adicionar ao orçamento</span></button>
+                    </div>
+                  </div>
                 </form>
                 <p id="item-error" class="form-error" aria-live="polite" hidden></p>
                 <div id="manual-items" class="manual-items" aria-live="polite"></div>
