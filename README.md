@@ -23,12 +23,12 @@ O JAR distribuído requer Java 21. Para compilar o código-fonte, instale també
            [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2], 'Process')
        }
    }
-   java -jar ..\urutau-jigs-0.1.6.jar
+   java -jar ..\urutau-jigs-0.1.7.jar
    ```
 
-3. Abra [o painel local](http://127.0.0.1:8080/) e entre com uma das contas. Preencha os valores oficiais em **Tabela de preços** antes de emitir. O H2 guarda os registros em `data/` da pasta onde a aplicação foi iniciada.
+3. Abra [o painel local](http://127.0.0.1:8080/) e entre com uma das contas. Confira os valores em **Tabela de preços**. Os preços iniciais do catálogo oficial são cadastrados pelo Flyway. O H2 guarda os registros em `data/` da pasta onde a aplicação foi iniciada.
 
-Use `mvn spring-boot:run` para executar pelo código-fonte. Use `mvn clean verify` para executar os testes e gerar o JAR em `target/urutau-jigs-0.1.6.jar`. Em Linux, exporte as mesmas variáveis no ambiente do processo e execute o JAR com Java 21.
+Use `mvn spring-boot:run` para executar pelo código-fonte. Use `mvn clean verify` para executar os testes e gerar o JAR em `target/urutau-jigs-0.1.7.jar`. Em Linux, exporte as mesmas variáveis no ambiente do processo e execute o JAR com Java 21.
 
 ## Instalar o URUTAU JIGS como aplicativo
 
@@ -99,9 +99,27 @@ Mantenha uma réplica da aplicação, pois as sessões administrativas e as conv
 
 - A carga inicial contém nove modelos e 124 combinações de gramatura e cor. A migração utiliza os dados oficiais verificados. [Catálogo](https://catalogo-urutau.vercel.app/) · [Dados canônicos](https://catalogo-urutau.vercel.app/catalog-data.js) · [Validação da página de origem](https://catalogo-urutau.vercel.app/script.js)
 - Cada combinação guarda os preços de consumidor final e lojista de forma independente. Campos em branco representam preço pendente. A emissão exige um preço na tabela aplicada para cada item.
-- O mínimo para lojista começa em 30 unidades e pode ser alterado em **Configurações**. Ao atingir o mínimo, o back-end recalcula todos os itens pela tabela de lojista.
+- Com o mínimo padrão de 30 unidades, orçamentos de 1 a 29 iscas usam a tabela de consumidor final e orçamentos a partir de 30 iscas usam a tabela de lojista. O back-end soma as unidades de todas as combinações e aplica a tabela correspondente a todos os itens. Se a quantidade voltar a ficar abaixo do mínimo, a tabela de consumidor final volta a valer. Altere o mínimo em **Configurações**.
 - A remoção cadastral preserva o registro da combinação como inativo. Reativar a mesma combinação restaura o seu cadastro com o mesmo identificador.
 - A emissão compara a revisão com os dados atuais do catálogo antes de gravar o orçamento. Cada emissão grava em uma transação os dados do cliente e os valores e descrições aplicados. A numeração vem do banco, e cada orçamento começa com status **Pendente**. O PDF é gerado a partir desses dados históricos.
+
+### Preços unitários iniciais
+
+| Modelo | Consumidor final | Lojista |
+| --- | ---: | ---: |
+| Urumax G1 | R$ 27,00 | R$ 16,00 |
+| Urumax G2 | R$ 29,00 | R$ 18,00 |
+| Urunaja | R$ 27,00 | R$ 17,00 |
+| Jig Urutau | R$ 26,00 | R$ 16,00 |
+| Jig Articulado | R$ 26,00 | R$ 16,00 |
+| Jig Peixinho | R$ 26,00 | R$ 16,00 |
+| Micro Jig | R$ 26,00 | R$ 16,00 |
+| Jig Bolinha | R$ 26,00 | R$ 16,00 |
+| Spinner | R$ 26,00 | R$ 16,00 |
+
+A migração Flyway V5 preenche os campos vazios de cada tabela nas gramaturas e cores já cadastradas para esses modelos. Preços preenchidos são preservados, e divergências em relação à tabela inicial aparecem no log da migração. No Railway, o primeiro deploy da 0.1.7 aplica a V5 com a configuração de banco já existente.
+
+Edite os valores vigentes em **Tabela de preços**. O banco é a fonte usada pelo Java para orçamentos manuais e revisados a partir da URUTAU AI. Reinícios e novos deploys preservam as alterações do painel, e PDFs emitidos mantêm os valores registrados na emissão. A informação de que o frete está fora do orçamento aparece no resumo.
 
 ## Gerador manual
 
@@ -139,7 +157,7 @@ O provedor de IA interpreta mensagens livres e ajuda a esclarecer trechos ambíg
    GEMINI_MODEL=gemini-3.5-flash-lite
    ```
 
-3. Pare a execução anterior. Na mesma pasta `urutau-jigs`, recarregue o `.env` com o trecho de PowerShell da seção de instalação e execute `java -jar ..\urutau-jigs-0.1.6.jar`. A mesma pasta de trabalho mantém o acesso a `data/urutau.mv.db` quando o H2 padrão estiver em uso. Abra **URUTAU AI** e envie um pedido de teste como `3 Spinner 12g cor 03`.
+3. Pare a execução anterior. Na mesma pasta `urutau-jigs`, recarregue o `.env` com o trecho de PowerShell da seção de instalação e execute `java -jar ..\urutau-jigs-0.1.7.jar`. A mesma pasta de trabalho mantém o acesso a `data/urutau.mv.db` quando o H2 padrão estiver em uso. Abra **URUTAU AI** e envie um pedido de teste como `3 Spinner 12g cor 03`.
 
 O modelo padrão, inclusive com `GEMINI_MODEL` em branco, é o Gemini 3.5 Flash-Lite estável. O back-end usa a operação oficial `generateContent` com Structured Outputs. Os limites de uso dependem do projeto no Google. Se a cota acabar ou o serviço falhar, a interface informa o erro e o gerador manual continua disponível. [Modelo e modalidade gratuita](https://aistudio.google.com/docs/models/gemini-3.5-flash-lite#pricing) · [Limites de uso](https://aistudio.google.com/docs/rate-limits)
 
@@ -170,16 +188,16 @@ As sugestões são validadas contra o catálogo e encaminhadas ao formulário ma
 
 ## Testes
 
-`mvn test` usa um banco H2 isolado e valores comerciais de teste. O conjunto cobre acesso administrativo, classificação abaixo e acima do mínimo, combinações e quantidades inválidas, preços pendentes, alteração de preços e preservação de orçamentos emitidos, paginação de PDFs e fluxos de interpretação com respostas de IA controladas.
+`mvn test` usa bancos H2 isolados. O conjunto cobre o cadastro dos preços iniciais por variante, a preservação de valores durante a migração, a edição administrativa, a classificação em torno do mínimo, os preços pendentes, os PDFs emitidos e os fluxos de interpretação com respostas de IA controladas.
 
 Os testes de navegador executam o JAR gerado por `mvn clean verify` com um H2 descartável. Eles verificam o gerador manual, os PDFs, a autenticação, o Cache Storage e a atualização real do Service Worker no Chromium. A suíte simula os diálogos de instalação e compartilhamento, o modo instalado, a identificação do Safari e o acesso ao WhatsApp. A instalação física e o envio a um contato dependem do dispositivo. Com Python instalado, execute os comandos abaixo na raiz do projeto.
 
 ```powershell
 python -m pip install -r src/test/browser/requirements.txt
 python -m playwright install chromium
-python src/test/browser/test_bulk_colors.py target/urutau-jigs-0.1.6.jar
-python src/test/browser/test_whatsapp_share.py target/urutau-jigs-0.1.6.jar
-python src/test/browser/test_pwa.py target/urutau-jigs-0.1.6.jar
+python src/test/browser/test_bulk_colors.py target/urutau-jigs-0.1.7.jar
+python src/test/browser/test_whatsapp_share.py target/urutau-jigs-0.1.7.jar
+python src/test/browser/test_pwa.py target/urutau-jigs-0.1.7.jar
 ```
 
 Se já tiver Chrome ou Edge instalado, use `--channel chrome` ou `--channel msedge` nos comandos de teste e dispense a instalação do Chromium pelo Playwright.
