@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -33,6 +34,11 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class SecurityConfig {
     private static final int SECONDS_PER_DAY = 24 * 60 * 60;
     private static final String REMEMBER_ME_COOKIE = "URUTAU_REMEMBER_ME";
+    private static final String[] PUBLIC_PWA_RESOURCES = {
+        "/manifest.webmanifest", "/service-worker.js", "/pwa.js", "/offline.html",
+        "/icons/icon-192.png", "/icons/icon-512.png", "/icons/icon-maskable-512.png",
+        "/icons/apple-touch-icon.png", "/icons/favicon.ico"
+    };
 
     @Bean
     @DependsOnDatabaseInitialization
@@ -100,6 +106,8 @@ public class SecurityConfig {
         http.authorizeHttpRequests(auth -> auth
                     .requestMatchers("/login.html", "/login", "/csrf", "/assets/**", "/app.css", "/login.js",
                         "/icons.svg", "/error").permitAll()
+                    .requestMatchers(HttpMethod.GET, PUBLIC_PWA_RESOURCES).permitAll()
+                    .requestMatchers(HttpMethod.HEAD, PUBLIC_PWA_RESOURCES).permitAll()
                     .anyRequest().hasRole("ADMIN"))
                 .formLogin(login -> login.loginPage("/login.html").loginProcessingUrl("/login")
                     .defaultSuccessUrl("/", true).failureUrl("/login.html?erro").permitAll())

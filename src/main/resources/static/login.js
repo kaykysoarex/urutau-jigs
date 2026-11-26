@@ -25,13 +25,15 @@ async function loadToken() {
     input.value = token;
     submit.disabled = false;
   } catch {
+    void window.urutauPwa?.checkConnection();
     show("Não foi possível iniciar a sessão. Atualize a página para tentar novamente.");
   }
 }
 
 form.addEventListener("submit", event => {
-  if (submit.disabled) event.preventDefault();
+  if (submit.disabled || window.urutauPwa?.isOffline()) event.preventDefault();
   else submit.disabled = true;
 });
 
+addEventListener("urutau:online", () => { if (submit.disabled) void loadToken(); });
 void loadToken();

@@ -2,10 +2,15 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#19191c">
+  <meta name="apple-mobile-web-app-title" content="URUTAU JIGS">
   <title>Novo orçamento | Urutau Jigs</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+  <link rel="icon" href="/icons/favicon.ico" sizes="any">
   <link rel="stylesheet" href="/app.css">
+  <script src="/pwa.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body class="workspace">
@@ -27,6 +32,7 @@
       <a class="nav-link" href="#catalogo" data-page="catalog"><svg class="icon"><use href="/icons.svg#boxes"/></svg><span>Catálogo de iscas</span></a>
       <a class="nav-link" href="#precos" data-page="prices"><svg class="icon"><use href="/icons.svg#tag"/></svg><span>Tabela de preços</span></a>
       <a class="nav-link" href="#configuracoes" data-page="settings"><svg class="icon"><use href="/icons.svg#settings"/></svg><span>Configurações</span></a>
+      <button id="pwa-install" class="nav-link pwa-install" type="button" hidden><svg class="icon" aria-hidden="true"><use href="/icons.svg#download"/></svg><span>Instalar aplicativo</span></button>
     </nav>
     <div class="sidebar-footer">
       <div class="account">
@@ -50,6 +56,13 @@
     </header>
 
     <main id="main" class="main-content" tabindex="-1">
+      <div id="pwa-update-notice" class="notice pwa-update" hidden>
+        <div>
+          <p role="status">Uma nova versão do URUTAU JIGS está disponível.</p>
+          <p id="pwa-update-detail" hidden>Conclua o trabalho em andamento para atualizar.</p>
+        </div>
+        <button id="pwa-update" class="button secondary" type="button">Atualizar aplicativo</button>
+      </div>
       <section id="page-manual" data-view="manual" aria-labelledby="manual-title">
         <div class="page-heading">
           <div><h1 id="manual-title">Novo orçamento</h1><p>Informe os dados do cliente e selecione as iscas para emitir o orçamento.</p></div>
@@ -277,6 +290,28 @@
       </div>
       <div class="dialog-actions"><button id="catalog-cancel" type="button" class="button secondary">Cancelar</button><button id="catalog-save" type="submit" class="button primary">Salvar modelo</button></div>
     </form>
+  </dialog>
+  <dialog id="pwa-ios-guide" class="pwa-guide" aria-labelledby="pwa-ios-title">
+    <div class="dialog-heading">
+      <h2 id="pwa-ios-title">Instalar no iPhone ou iPad</h2>
+      <button id="pwa-ios-close" class="icon-button" type="button" aria-label="Fechar instruções"><svg class="icon" aria-hidden="true"><use href="/icons.svg#x"/></svg></button>
+    </div>
+    <ol class="dialog-body">
+      <li>Abra o URUTAU JIGS no Safari.</li>
+      <li>Toque em <strong>Compartilhar</strong> e depois em <strong>Adicionar à Tela de Início</strong>.</li>
+      <li>Se aparecer <strong>Abrir como App</strong>, mantenha a opção ativada. Toque em <strong>Adicionar</strong>.</li>
+    </ol>
+  </dialog>
+  <dialog id="pwa-offline" class="pwa-offline-dialog" aria-labelledby="pwa-offline-heading">
+    <div class="login-brand"><span class="brand-logo"><img src="/assets/urutau-logo.png" width="640" height="640" alt="URUTAU JIGS"></span></div>
+    <div class="login-content pwa-connection">
+      <div class="login-title">
+        <h2 id="pwa-offline-heading">Você está sem conexão.</h2>
+        <p>Conecte-se à internet para continuar utilizando o URUTAU JIGS.</p>
+      </div>
+      <button id="pwa-offline-retry" class="button primary" type="button">Tentar novamente</button>
+      <p id="pwa-offline-status" class="pwa-connection-status" role="status"></p>
+    </div>
   </dialog>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 </body>

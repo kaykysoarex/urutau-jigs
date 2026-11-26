@@ -60,6 +60,7 @@ class RequestError extends Error {
 }
 
 async function api(url, options = {}) {
+  if (window.urutauPwa?.isOffline()) throw new RequestError(0, "Você está sem conexão.");
   const headers = { Accept: options.pdf ? "application/pdf, application/json" : "application/json" };
   const request = { method: options.method ?? "GET", headers, credentials: "same-origin", signal: options.signal };
   if (request.method !== "GET" && state.session?.csrfHeader) {
@@ -73,8 +74,10 @@ async function api(url, options = {}) {
   try {
     response = await fetch(url, request);
   } catch {
+    if (!options.signal?.aborted) void window.urutauPwa?.checkConnection();
     throw new RequestError(0, "Não foi possível conectar ao sistema. Tente novamente.");
   }
+  if ([502, 503, 504].includes(response.status)) void window.urutauPwa?.checkConnection();
   if (response.status === 401 || (response.redirected && new URL(response.url).pathname === "/login.html")) {
     location.assign("/login.html");
     throw new RequestError(401, "Entre novamente para continuar.");
@@ -389,6 +392,7 @@ function updateItemControls(message = "") {
   byId("item-selected-total").textContent = hasInvalidQuantity ? "—" : numberFormat.format(total);
   byId("item-add").disabled = locked || !count || hasInvalidQuantity;
   formFeedback("item-error", message || (hasInvalidQuantity ? "Informe uma quantidade inteira entre 1 e 100.000 para cada cor selecionada." : ""));
+  window.urutauPwa?.renderUpdate();
 }
 
 function changeColorSelection(event) {
@@ -445,6 +449,7 @@ function editItem(id) {
 
 function draftChanged() {
   byId("quote-success").hidden = true;
+  window.urutauPwa?.renderUpdate();
   void updatePreview();
 }
 
@@ -1294,6 +1299,7 @@ function renderAIItems() {
     });
     container.append(list);
   }
+  window.urutauPwa?.renderUpdate();
 }
 
 async function startConversation() {
@@ -1441,16 +1447,7 @@ function bindEvents() {
   byId("ai-review").addEventListener("click", reviewConversation);
 }
 
-async function initialize() {
-  bindEvents();
-  const today = new Date();
-  byId("header-date").dateTime = today.toISOString();
-  byId("header-date").textContent = currentDateFormat.format(today);
-  const states = "AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO".split(" ");
-  setOptions(byId("client-state"), states.map(code => [code, code]), "Selecione");
-  initializeChat();
-  renderManualRows();
-  navigate();
+async function loadSession() {
   try {
     state.session = await api("/api/session");
     byId("account-name").textContent = state.session.username;
@@ -1463,4 +1460,26 @@ async function initialize() {
   }
 }
 
-void initialize();
+function hasUnfinishedQuote() {
+  return state.issueBusy || state.draft.length > 0 || state.editingItem !== null || state.selectedColors.size > 0
+    || Object.values(readQuoteClient(byId("client-form"))).some(Boolean)
+    || state.aiBusy || Boolean(state.conversation?.items.length || state.conversation?.needsClarification
+      || byId("chat-message").value.trim());
+}
+
+function initialize() {
+  bindEvents();
+  const today = new Date();
+  byId("header-date").dateTime = today.toISOString();
+  byId("header-date").textContent = currentDateFormat.format(today);
+  const states = "AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO".split(" ");
+  setOptions(byId("client-state"), states.map(code => [code, code]), "Selecione");
+  initializeChat();
+  renderManualRows();
+  navigate();
+  window.urutauPwa?.setUpdateGuard(hasUnfinishedQuote);
+  addEventListener("urutau:online", () => void loadSession());
+  void loadSession();
+}
+
+initialize();

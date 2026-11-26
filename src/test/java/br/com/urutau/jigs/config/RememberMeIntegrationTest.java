@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestBuilders.formLogin;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.head;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -91,6 +93,27 @@ class RememberMeIntegrationTest {
         assertThat(activeSession).isNotNull();
         mvc.perform(get("/login.html").session(activeSession))
             .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/"));
+    }
+
+    @Test
+    void publishesOnlyThePwaAssetsWhileProtectingAdministrativePagesAndData() throws Exception {
+        mvc.perform(get("/manifest.webmanifest"))
+            .andExpect(status().isOk()).andExpect(content().contentType("application/manifest+json"));
+        mvc.perform(get("/service-worker.js"))
+            .andExpect(status().isOk()).andExpect(content().contentTypeCompatibleWith("text/javascript"));
+        mvc.perform(get("/offline.html")).andExpect(status().isOk());
+        mvc.perform(get("/pwa.js").param("connection-check", "1")).andExpect(status().isOk());
+        mvc.perform(head("/icons/favicon.ico")).andExpect(status().isOk());
+        for (var icon : new String[] {"icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png"}) {
+            mvc.perform(get("/icons/" + icon))
+                .andExpect(status().isOk()).andExpect(content().contentType("image/png"));
+        }
+        for (var path : new String[] {"/", "/index.html", "/app.js", "/icons/private.png"}) {
+            mvc.perform(get(path).accept("text/html"))
+                .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/login.html"));
+        }
+        mvc.perform(get("/api/quotes/1/pdf")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/session")).andExpect(status().isUnauthorized());
     }
 
     @Test
