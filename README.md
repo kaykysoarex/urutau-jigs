@@ -23,12 +23,24 @@ O JAR distribuído requer Java 21. Para compilar o código-fonte, instale també
            [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2], 'Process')
        }
    }
-   java -jar ..\urutau-jigs-0.1.5.jar
+   java -jar ..\urutau-jigs-0.1.6.jar
    ```
 
 3. Abra [o painel local](http://127.0.0.1:8080/) e entre com uma das contas. Preencha os valores oficiais em **Tabela de preços** antes de emitir. O H2 guarda os registros em `data/` da pasta onde a aplicação foi iniciada.
 
-Use `mvn spring-boot:run` para executar pelo código-fonte. Use `mvn clean verify` para executar os testes e gerar o JAR em `target/urutau-jigs-0.1.5.jar`. Em Linux, exporte as mesmas variáveis no ambiente do processo e execute o JAR com Java 21.
+Use `mvn spring-boot:run` para executar pelo código-fonte. Use `mvn clean verify` para executar os testes e gerar o JAR em `target/urutau-jigs-0.1.6.jar`. Em Linux, exporte as mesmas variáveis no ambiente do processo e execute o JAR com Java 21.
+
+## Instalar o URUTAU JIGS como aplicativo
+
+Abra a URL HTTPS do serviço no dispositivo em que deseja instalar. Para testes locais no computador, use `http://127.0.0.1:8080/`. O Railway usa o domínio HTTPS já configurado para o serviço e as mesmas variáveis de ambiente.
+
+- **Android.** Abra o sistema no Chrome. No menu lateral do painel, escolha **Instalar aplicativo** quando a opção aparecer. Também é possível instalar pelo menu do Chrome em **Instalar e criar atalho → Instalar**. [Ajuda do Chrome no Android](https://support.google.com/chrome/answer/9658361?co=GENIE.Platform%3DAndroid&hl=pt-BR)
+- **iPhone.** Abra a URL no Safari e toque em **Compartilhar → Adicionar à Tela de Início**. Ative **Abrir como App** se essa opção aparecer e toque em **Adicionar**. O menu lateral do painel mostra essas instruções. [Suporte da Apple](https://support.apple.com/en-lamr/guide/iphone/iphea86e5236/ios)
+- **Windows.** Use **Instalar aplicativo** no painel, o ícone de instalação na barra de endereços ou o menu do navegador. No Chrome, a opção está em **Transmitir, salvar e compartilhar**. No Edge, procure em **Mais ferramentas → Aplicativos**. [Ajuda do Chrome](https://support.google.com/chrome/answer/9658361?co=GENIE.Platform%3DDesktop&hl=pt-BR) · [Suporte do Edge](https://support.microsoft.com/pt-br/edge/install-manage-or-uninstall-apps-in-microsoft-edge)
+
+O aplicativo instalado abre pela tela inicial ou pelo menu de aplicativos do dispositivo. Se o navegador isolar os cookies da versão instalada, faça o primeiro login normalmente. Em caso de falta de conexão, o painel pausa as operações até o servidor voltar. Use **Tentar novamente** na tela de indisponibilidade.
+
+O Service Worker usa a rede para abrir o painel e mantém no Cache Storage somente os recursos públicos da lista em `service-worker.js`. Ao publicar uma nova versão, atualize o nome do cache nesse arquivo. O aplicativo oferece **Atualizar aplicativo** quando a nova versão está pronta e aguarda a conclusão do orçamento em andamento antes de permitir a atualização.
 
 ## Banco de dados e acesso compartilhado
 
@@ -127,7 +139,7 @@ O provedor de IA interpreta mensagens livres e ajuda a esclarecer trechos ambíg
    GEMINI_MODEL=gemini-3.5-flash-lite
    ```
 
-3. Pare a execução anterior. Na mesma pasta `urutau-jigs`, recarregue o `.env` com o trecho de PowerShell da seção de instalação e execute `java -jar ..\urutau-jigs-0.1.5.jar`. A mesma pasta de trabalho mantém o acesso a `data/urutau.mv.db` quando o H2 padrão estiver em uso. Abra **URUTAU AI** e envie um pedido de teste como `3 Spinner 12g cor 03`.
+3. Pare a execução anterior. Na mesma pasta `urutau-jigs`, recarregue o `.env` com o trecho de PowerShell da seção de instalação e execute `java -jar ..\urutau-jigs-0.1.6.jar`. A mesma pasta de trabalho mantém o acesso a `data/urutau.mv.db` quando o H2 padrão estiver em uso. Abra **URUTAU AI** e envie um pedido de teste como `3 Spinner 12g cor 03`.
 
 O modelo padrão, inclusive com `GEMINI_MODEL` em branco, é o Gemini 3.5 Flash-Lite estável. O back-end usa a operação oficial `generateContent` com Structured Outputs. Os limites de uso dependem do projeto no Google. Se a cota acabar ou o serviço falhar, a interface informa o erro e o gerador manual continua disponível. [Modelo e modalidade gratuita](https://aistudio.google.com/docs/models/gemini-3.5-flash-lite#pricing) · [Limites de uso](https://aistudio.google.com/docs/rate-limits)
 
@@ -160,13 +172,14 @@ As sugestões são validadas contra o catálogo e encaminhadas ao formulário ma
 
 `mvn test` usa um banco H2 isolado e valores comerciais de teste. O conjunto cobre acesso administrativo, classificação abaixo e acima do mínimo, combinações e quantidades inválidas, preços pendentes, alteração de preços e preservação de orçamentos emitidos, paginação de PDFs e fluxos de interpretação com respostas de IA controladas.
 
-Os testes de navegador executam o JAR gerado por `mvn clean verify` com um H2 descartável. Eles verificam o gerador manual em telas grandes e pequenas, a prévia do PDF e os fluxos de compartilhamento nativo e pelo WhatsApp Web. A suíte simula o menu do sistema e os acessos ao WhatsApp. Com Python instalado, execute os comandos abaixo na raiz do projeto.
+Os testes de navegador executam o JAR gerado por `mvn clean verify` com um H2 descartável. Eles verificam o gerador manual, os PDFs, a autenticação, o Cache Storage e a atualização real do Service Worker no Chromium. A suíte simula os diálogos de instalação e compartilhamento, o modo instalado, a identificação do Safari e o acesso ao WhatsApp. A instalação física e o envio a um contato dependem do dispositivo. Com Python instalado, execute os comandos abaixo na raiz do projeto.
 
 ```powershell
 python -m pip install -r src/test/browser/requirements.txt
 python -m playwright install chromium
-python src/test/browser/test_bulk_colors.py target/urutau-jigs-0.1.5.jar
-python src/test/browser/test_whatsapp_share.py target/urutau-jigs-0.1.5.jar
+python src/test/browser/test_bulk_colors.py target/urutau-jigs-0.1.6.jar
+python src/test/browser/test_whatsapp_share.py target/urutau-jigs-0.1.6.jar
+python src/test/browser/test_pwa.py target/urutau-jigs-0.1.6.jar
 ```
 
 Se já tiver Chrome ou Edge instalado, use `--channel chrome` ou `--channel msedge` nos comandos de teste e dispense a instalação do Chromium pelo Playwright.
