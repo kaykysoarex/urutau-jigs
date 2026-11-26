@@ -11,6 +11,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -19,8 +20,11 @@ import br.com.urutau.jigs.ai.AiDtos.ReviewItem;
 import br.com.urutau.jigs.ai.AiInterpreter.Input;
 import br.com.urutau.jigs.ai.AiInterpreter.ProposedItem;
 import br.com.urutau.jigs.ai.AiInterpreter.Result;
+import br.com.urutau.jigs.catalog.CatalogDtos.PricesUpdate;
+import br.com.urutau.jigs.catalog.CatalogDtos.VariantPriceUpdate;
 import br.com.urutau.jigs.catalog.CatalogService;
 import br.com.urutau.jigs.quotes.QuoteDtos.ItemInput;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -35,6 +39,7 @@ import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 import tools.jackson.databind.json.JsonMapper;
 
 @SpringBootTest(properties = {
@@ -75,15 +80,41 @@ class CatalogOrderConversationTest {
                 tuple("Urunaja", 10, "02", 5));
         verify(provider, never()).interpret(any());
 
-        var items = draft.items().stream().map(item -> new ItemInput(item.variantId(), item.quantity())).toList();
-        mvc.perform(post("/api/quotes/preview")
-                .with(user("primary-test").roles("ADMIN")).with(csrf()).session(session)
-                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("items", items))))
+        previewDraft(draft)
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.quantity").value(15))
-            .andExpect(jsonPath("$.missingPrices").value(3));
+            .andExpect(jsonPath("$.missingPrices").value(0))
+            .andExpect(jsonPath("$.priceTier").value("CONSUMIDOR_FINAL"))
+            .andExpect(jsonPath("$.items[0].unitPrice").value("26.00"))
+            .andExpect(jsonPath("$.items[1].unitPrice").value("27.00"))
+            .andExpect(jsonPath("$.total").value("400.00"));
         mvc.perform(get("/api/quotes").with(user("primary-test").roles("ADMIN")).session(session))
             .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
+    }
+
+    @Test
+    void usesTheEditedCatalogPriceAfterTheAiDraftWasInterpreted() throws Exception {
+        var draft = sendMessage(startConversation(), CATALOG_MESSAGE);
+        long variantId = draft.items().getFirst().variantId();
+        var original = catalog.findVariants(List.of(variantId)).get(variantId);
+        var changedPrice = new VariantPriceUpdate(variantId, new BigDecimal("32.50"), original.wholesalePrice());
+
+        try {
+            mvc.perform(put("/api/catalog/prices").with(user("primary-test").roles("ADMIN"))
+                    .with(csrf()).session(session).contentType(MediaType.APPLICATION_JSON)
+                    .content(json.writeValueAsString(new PricesUpdate(List.of(changedPrice)))))
+                .andExpect(status().isNoContent());
+            previewDraft(draft)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.quantity").value(15))
+                .andExpect(jsonPath("$.items[0].unitPrice").value("32.50"))
+                .andExpect(jsonPath("$.items[0].subtotal").value("162.50"))
+                .andExpect(jsonPath("$.total").value("432.50"));
+        } finally {
+            catalog.updatePrices(new PricesUpdate(List.of(
+                new VariantPriceUpdate(variantId, original.retailPrice(), original.wholesalePrice()))));
+        }
+        verify(provider, never()).interpret(any());
     }
 
     @ParameterizedTest
@@ -116,6 +147,12 @@ class CatalogOrderConversationTest {
                 tuple("Urunaja", 10, "01", 5), tuple("Urunaja", 10, "02", 5), tuple("Urunaja", 10, "06", 5),
                 tuple("Urunaja", 10, "08", 5), tuple("Urunaja", 10, "07", 5), tuple("Urunaja", 10, "05", 5));
         assertThat(draft.items().stream().mapToInt(ReviewItem::quantity).sum()).isEqualTo(50);
+        previewDraft(draft)
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.priceTier").value("LOJISTA"))
+            .andExpect(jsonPath("$.items[0].unitPrice").value("16.00"))
+            .andExpect(jsonPath("$.items[9].unitPrice").value("17.00"))
+            .andExpect(jsonPath("$.total").value("830.00"));
         verifyNoInteractions(provider);
     }
 
@@ -219,5 +256,12 @@ class CatalogOrderConversationTest {
                 .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("message", message))))
             .andExpect(status().isOk()).andReturn().getResponse();
         return json.readValue(response.getContentAsByteArray(), ConversationView.class);
+    }
+
+    private ResultActions previewDraft(ConversationView draft) throws Exception {
+        var items = draft.items().stream().map(item -> new ItemInput(item.variantId(), item.quantity())).toList();
+        return mvc.perform(post("/api/quotes/preview")
+                .with(user("primary-test").roles("ADMIN")).with(csrf()).session(session)
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("items", items))));
     }
 }

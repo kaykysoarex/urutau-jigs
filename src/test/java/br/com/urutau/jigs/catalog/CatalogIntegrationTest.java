@@ -33,7 +33,7 @@ class CatalogIntegrationTest {
     private CatalogService catalog;
 
     @Test
-    void loadsVerifiedModelsAndNonSequentialSpinnerColorsWithPricesUnset() {
+    void loadsVerifiedModelsAndNonSequentialSpinnerColorsWithInitialPrices() {
         var products = catalog.list().stream()
             .collect(Collectors.toMap(ProductView::name, Function.identity()));
         var expectedCounts = Map.ofEntries(
@@ -44,7 +44,7 @@ class CatalogIntegrationTest {
         expectedCounts.forEach((name, count) -> {
             assertThat(products.get(name)).isNotNull();
             assertThat(products.get(name).variants()).hasSize(count)
-                .allMatch(variant -> variant.active() && variant.retailPrice() == null && variant.wholesalePrice() == null);
+                .allMatch(variant -> variant.active() && variant.retailPrice() != null && variant.wholesalePrice() != null);
         });
         for (int grams : List.of(12, 14, 16)) {
             assertThat(products.get("Spinner").variants()).filteredOn(variant -> variant.weight() == grams)

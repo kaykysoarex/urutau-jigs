@@ -9,6 +9,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -90,6 +91,46 @@ class QuoteIntegrationTest {
         preview(List.of(item(first, 10), item(second, 10)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.priceTier").value("CONSUMIDOR_FINAL"))
                 .andExpect(jsonPath("$.remainingForWholesale").value(10)).andExpect(jsonPath("$.total").value("300.00"));
+    }
+
+    @Test
+    void appliesOfficialPricesToMixedModelsAroundTheWholesaleMinimum() throws Exception {
+        long urunaja = officialVariant("Urunaja", 10, "01");
+        long urumax = officialVariant("Urumax G2", 16, "02");
+        long spinner = officialVariant("Spinner", 14, "06");
+        var belowMinimum = List.of(item(urunaja, 10), item(urumax, 10), item(spinner, 9));
+        var atMinimum = List.of(item(urunaja, 10), item(urumax, 10), item(spinner, 10));
+        var aboveMinimum = List.of(item(urunaja, 10), item(urumax, 10), item(spinner, 11));
+
+        preview(belowMinimum).andExpect(status().isOk())
+                .andExpect(jsonPath("$.quantity").value(29))
+                .andExpect(jsonPath("$.priceTier").value("CONSUMIDOR_FINAL"))
+                .andExpect(jsonPath("$.items[0].unitPrice").value("27.00"))
+                .andExpect(jsonPath("$.items[1].unitPrice").value("29.00"))
+                .andExpect(jsonPath("$.items[2].unitPrice").value("26.00"))
+                .andExpect(jsonPath("$.total").value("794.00"));
+        preview(atMinimum).andExpect(status().isOk())
+                .andExpect(jsonPath("$.quantity").value(30))
+                .andExpect(jsonPath("$.priceTier").value("LOJISTA"))
+                .andExpect(jsonPath("$.items[0].unitPrice").value("17.00"))
+                .andExpect(jsonPath("$.items[1].unitPrice").value("18.00"))
+                .andExpect(jsonPath("$.items[2].unitPrice").value("16.00"))
+                .andExpect(jsonPath("$.items[2].subtotal").value("160.00"))
+                .andExpect(jsonPath("$.total").value("510.00"));
+        preview(aboveMinimum).andExpect(status().isOk())
+                .andExpect(jsonPath("$.quantity").value(31))
+                .andExpect(jsonPath("$.priceTier").value("LOJISTA"))
+                .andExpect(jsonPath("$.total").value("526.00"));
+        preview(belowMinimum).andExpect(status().isOk())
+                .andExpect(jsonPath("$.priceTier").value("CONSUMIDOR_FINAL"))
+                .andExpect(jsonPath("$.total").value("794.00"));
+
+        mvc.perform(put("/api/settings").with(user("primary-test").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"wholesaleThreshold\":31}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.wholesaleThreshold").value(31));
+        preview(atMinimum).andExpect(status().isOk())
+                .andExpect(jsonPath("$.priceTier").value("CONSUMIDOR_FINAL"))
+                .andExpect(jsonPath("$.total").value("820.00"));
     }
 
     @Test
@@ -308,6 +349,13 @@ class QuoteIntegrationTest {
 
     private static Map<String, Object> item(long variantId, Number quantity) {
         return Map.of("variantId", variantId, "quantity", quantity);
+    }
+
+    private long officialVariant(String name, int weight, String color) {
+        return catalog.list().stream().filter(product -> product.name().equals(name))
+                .flatMap(product -> product.variants().stream())
+                .filter(variant -> variant.weight() == weight && variant.color().equals(color))
+                .findFirst().orElseThrow().id();
     }
 
     private static VariantPriceUpdate price(long variant, String retail, String wholesale) {

@@ -201,6 +201,7 @@ def urunaja_selection(page):
 
 def spinner_selection(page):
     spinner = find_product(page, "Spinner")
+    variants = {item["color"]: item for item in spinner["variants"] if item["weight"] == 12}
     catalog_update = {"name": spinner["name"], "active": True, "variants": [
         {"weight": item["weight"], "color": item["color"],
          "active": (item["weight"], item["color"]) != (14, "06")}
@@ -208,6 +209,10 @@ def spinner_selection(page):
     ]}
     catalog_update["variants"].append({"weight": 14, "color": "QA-21", "active": True})
     put_setting(page, f"/api/catalog/{spinner['id']}", catalog_update)
+    unpriced = variants["03"]
+    put_setting(page, "/api/catalog/prices", {"variants": [{
+        "id": unpriced["id"], "retailPrice": None, "wholesalePrice": unpriced["wholesalePrice"],
+    }]})
     page.reload()
     choose(page, "Spinner", 12)
     assert_colors(page, ["01", "03", "04", "06", "08"])
@@ -246,9 +251,9 @@ def spinner_selection(page):
     quantity(page, "03").fill("3")
     quantity(page, "08").fill("7")
     assert_selection(page, 2, 10)
-    variants = {item["color"]: item["id"] for item in spinner["variants"] if item["weight"] == 12}
-    preview = submit_and_check_preview(page, add.click, {variants["03"]: 3, variants["08"]: 7})
+    preview = submit_and_check_preview(page, add.click, {variants["03"]["id"]: 3, variants["08"]["id"]: 7})
     assert preview["quantity"] == 10
+    assert preview["missingPrices"] == 1
     assert_line(page, "Spinner", 12, "03", 3)
     assert_line(page, "Spinner", 12, "08", 7)
 

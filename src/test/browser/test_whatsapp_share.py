@@ -134,7 +134,7 @@ def assert_responsive(page, dialog):
 def native_sharing(page, variant_id):
     quote = issue_quote(page, variant_id, CLIENT, PHONE, check_preview=True)
     number = quote["number"]
-    assert Decimal(quote["total"]) == Decimal("25.00")
+    assert Decimal(quote["total"]) == Decimal("52.00")
     before = history_record(page, number)
     trigger = page.locator("#quote-success").get_by_role("button", name=SHARE_LABEL, exact=True)
     pdf_url = f"**/api/quotes/{number}/pdf"
@@ -328,9 +328,6 @@ def main():
             page = mobile.new_page()
             login(page, username, password)
             variant_id = variant_for_fixture(page)
-            put_setting(page, "/api/catalog/prices", {
-                "variants": [{"id": variant_id, "retailPrice": 12.5, "wholesalePrice": 10}],
-            })
             quote = native_sharing(page, variant_id)
             assert_security(playwright.request, url, quote["number"], page)
             print("OK emissão, prévia protegida, PDF nativo por toque, erro e cancelamento, autenticação e CSRF", flush=True)
