@@ -15,12 +15,13 @@
 </head>
 <body class="workspace">
   <a class="skip-link" href="#main">Pular para o conteúdo</a>
-  <button id="nav-overlay" class="nav-overlay" hidden type="button" aria-label="Fechar menu lateral"></button>
+  <button id="nav-overlay" class="nav-overlay" hidden type="button" tabindex="-1" aria-label="Fechar menu lateral"></button>
   <aside id="sidebar" class="sidebar" aria-label="Menu lateral">
     <div class="brand-panel">
       <a class="brand-logo" href="#novo-orcamento" aria-label="Urutau Jigs, novo orçamento">
         <img src="/assets/urutau-logo.png" alt="Urutau Jigs" width="615" height="615">
       </a>
+      <button id="nav-close" class="icon-button nav-close" type="button" aria-label="Fechar menu lateral"><svg class="icon" aria-hidden="true"><use href="/icons.svg#x"/></svg></button>
       <span class="brand-caption">Área administrativa</span>
     </div>
     <nav id="navigation" class="navigation" aria-label="Navegação principal">
@@ -53,6 +54,7 @@
         <span id="breadcrumb-group">Orçamentos</span><svg class="icon"><use href="/icons.svg#chevron-right"/></svg><strong id="breadcrumb-page">Novo orçamento</strong>
       </nav>
       <time id="header-date" class="header-date"></time>
+      <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
     </header>
 
     <main id="main" class="main-content" tabindex="-1">
@@ -76,10 +78,10 @@
                 <span class="section-icon"><svg class="icon"><use href="/icons.svg#user"/></svg></span>
                 <div><h2 id="client-heading">Dados do cliente</h2><p>Informações que aparecem no PDF.</p></div>
               </div>
-              <form id="client-form" class="panel-body client-fields">
-                <label class="field"><span>Nome do cliente <span class="required" aria-label="obrigatório">*</span></span><input id="client-name" name="name" maxlength="120" placeholder="Nome ou razão social" required></label>
-                <label class="field"><span>Telefone</span><input id="client-phone" type="tel" name="phone" maxlength="40" placeholder="(00) 00000-0000"></label>
-                <label class="field"><span>Cidade</span><input id="client-city" name="city" maxlength="120" placeholder="Informe a cidade"></label>
+              <form id="client-form" class="panel-body client-fields" autocomplete="off">
+                <label class="field"><span>Nome do cliente <span class="required" aria-hidden="true">*</span></span><input id="client-name" name="name" maxlength="120" placeholder="Nome ou razão social" autocapitalize="words" required></label>
+                <label class="field"><span>Telefone</span><input id="client-phone" type="tel" inputmode="tel" name="phone" maxlength="40" placeholder="(00) 00000-0000"></label>
+                <label class="field"><span>Cidade</span><input id="client-city" name="city" maxlength="120" placeholder="Informe a cidade" autocapitalize="words"></label>
                 <label class="field"><span>UF</span><select id="client-state" name="state" aria-label="UF"><option value="">Selecione</option></select></label>
               </form>
             </section>
@@ -162,10 +164,10 @@
         <div class="ai-grid">
           <section class="panel chat-panel" aria-label="Conversa com a URUTAU AI">
             <div class="section-heading"><span class="section-icon"><svg class="icon"><use href="/icons.svg#sparkles"/></svg></span><div><h2>Assistente de orçamento</h2><p>Conversa interna com o administrador.</p></div></div>
-            <div id="chat-log" class="chat-log" role="log" aria-live="polite" aria-relevant="additions"></div>
+            <div id="chat-log" class="chat-log" role="log" aria-label="Mensagens da conversa" aria-live="polite" aria-relevant="additions" tabindex="0"></div>
             <form id="chat-form" class="chat-form">
               <div id="ai-warning" class="notice ai-warning" role="status" hidden></div>
-              <label class="field"><span>Mensagem do pedido ou resposta</span><textarea id="chat-message" rows="4" placeholder="Cole a mensagem do pedido ou responda às dúvidas do assistente." required disabled></textarea></label>
+              <label class="field"><span>Mensagem do pedido ou resposta</span><textarea id="chat-message" rows="4" placeholder="Cole a mensagem do pedido ou responda às dúvidas do assistente." autocomplete="off" required disabled></textarea></label>
               <div class="chat-actions"><small>Remova nomes, telefones e endereços das mensagens copiadas.</small><button id="chat-send" class="button primary" type="submit" disabled><svg class="icon"><use href="/icons.svg#send"/></svg><span>Enviar</span></button></div>
             </form>
           </section>
@@ -190,7 +192,7 @@
           <button id="catalog-new" class="button primary" type="button"><svg class="icon"><use href="/icons.svg#plus"/></svg>Novo modelo</button>
         </div>
         <section class="panel" aria-label="Modelos cadastrados">
-          <div class="panel-toolbar"><label class="field search-field"><span class="sr-only">Buscar modelo</span><svg class="icon"><use href="/icons.svg#search"/></svg><input id="catalog-search" type="search" placeholder="Buscar por nome do modelo"></label></div>
+          <div class="panel-toolbar"><label class="field search-field"><span class="sr-only">Buscar modelo</span><svg class="icon" aria-hidden="true"><use href="/icons.svg#search"/></svg><input id="catalog-search" type="search" placeholder="Buscar por nome do modelo" autocomplete="off" enterkeyhint="search"></label></div>
           <div id="catalog-content" aria-live="polite"></div>
         </section>
       </section>
@@ -225,8 +227,10 @@
       <h2 id="preview-pdf-title">Prévia do orçamento</h2>
       <button id="preview-pdf-close" class="icon-button" type="button" aria-label="Fechar prévia"><svg class="icon"><use href="/icons.svg#x"/></svg></button>
     </div>
-    <p id="preview-pdf-status" class="dialog-body" role="status"></p>
-    <iframe id="preview-pdf-frame" class="preview-pdf-frame" title="PDF da prévia do orçamento" hidden></iframe>
+    <div class="pdf-viewport">
+      <p id="preview-pdf-status" class="dialog-body" role="status"></p>
+      <iframe id="preview-pdf-frame" class="preview-pdf-frame" title="PDF da prévia do orçamento" hidden></iframe>
+    </div>
     <div id="preview-pdf-actions" class="dialog-actions preview-pdf-actions" hidden>
       <a id="preview-pdf-open" class="button secondary" target="_blank" rel="noopener"><svg class="icon"><use href="/icons.svg#eye"/></svg>Visualizar em nova aba</a>
       <a id="preview-pdf-download" class="button primary" download="previa-orcamento-urutau.pdf"><svg class="icon"><use href="/icons.svg#download"/></svg>Baixar PDF</a>
@@ -238,8 +242,10 @@
       <h2 id="issued-pdf-title">Orçamento emitido</h2>
       <button id="issued-pdf-close" class="icon-button" type="button" aria-label="Fechar orçamento"><svg class="icon"><use href="/icons.svg#x"/></svg></button>
     </div>
-    <p id="issued-pdf-status" class="dialog-body" role="status"></p>
-    <iframe id="issued-pdf-frame" class="preview-pdf-frame" title="PDF do orçamento emitido" hidden></iframe>
+    <div class="pdf-viewport">
+      <p id="issued-pdf-status" class="dialog-body" role="status"></p>
+      <iframe id="issued-pdf-frame" class="preview-pdf-frame" title="PDF do orçamento emitido" hidden></iframe>
+    </div>
     <div class="dialog-actions preview-pdf-actions">
       <a id="issued-pdf-open" class="button secondary" target="_blank" rel="noopener"><svg class="icon"><use href="/icons.svg#eye"/></svg>Visualizar em nova aba</a>
       <a id="issued-pdf-download" class="button secondary"><svg class="icon"><use href="/icons.svg#download"/></svg>Baixar PDF</a>
@@ -255,7 +261,7 @@
     <div class="dialog-body quote-share-body">
       <label class="field">
         <span>Mensagem para o cliente</span>
-        <textarea id="quote-share-message" rows="8"></textarea>
+        <textarea id="quote-share-message" rows="6" autocomplete="off"></textarea>
       </label>
       <div class="quote-share-actions">
         <button id="quote-share-copy" class="button secondary" type="button" disabled><svg class="icon"><use href="/icons.svg#copy"/></svg>Copiar mensagem</button>
@@ -280,9 +286,9 @@
     <form id="catalog-form">
       <div class="dialog-heading"><div><h2 id="catalog-dialog-heading">Novo modelo</h2><p>Cadastre as combinações de gramatura e cor da isca.</p></div><button id="catalog-close" class="icon-button" type="button" aria-label="Fechar"><svg class="icon"><use href="/icons.svg#x"/></svg></button></div>
       <div class="dialog-body">
-        <div class="catalog-name-line"><label class="field"><span>Nome do modelo <span class="required" aria-label="obrigatório">*</span></span><input id="catalog-name" maxlength="120" required placeholder="Nome da isca"></label><label class="check-field"><input id="catalog-active" type="checkbox" checked>Modelo ativo</label></div>
+        <div class="catalog-name-line"><label class="field"><span>Nome do modelo <span class="required" aria-hidden="true">*</span></span><input id="catalog-name" maxlength="120" required placeholder="Nome da isca" autocomplete="off" autocapitalize="words"></label><label class="check-field"><input id="catalog-active" type="checkbox" checked>Modelo ativo</label></div>
         <div class="combination-builder">
-          <div class="variant-fields"><label class="field"><span>Gramaturas (g)</span><input id="catalog-weights" placeholder="Ex.: 10, 12" maxlength="120"></label><label class="field"><span>Códigos das cores</span><input id="catalog-colors" placeholder="Ex.: 01, 03, 07" maxlength="180"></label><button id="add-combinations" class="button secondary" type="button"><svg class="icon"><use href="/icons.svg#plus"/></svg>Adicionar</button></div>
+          <div class="variant-fields"><label class="field"><span>Gramaturas (g)</span><input id="catalog-weights" placeholder="Ex.: 10, 12" maxlength="120" autocomplete="off" spellcheck="false"></label><label class="field"><span>Códigos das cores</span><input id="catalog-colors" placeholder="Ex.: 01, 03, 07" maxlength="180" autocomplete="off" autocapitalize="characters" spellcheck="false"></label><button id="add-combinations" class="button secondary" type="button"><svg class="icon"><use href="/icons.svg#plus"/></svg>Adicionar</button></div>
           <small>Separe os valores por vírgulas. Cada gramatura será combinada com as cores informadas.</small>
         </div>
         <div id="dialog-variants" class="dialog-variants"></div>
@@ -313,6 +319,5 @@
       <p id="pwa-offline-status" class="pwa-connection-status" role="status"></p>
     </div>
   </dialog>
-  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 </body>
 </html>

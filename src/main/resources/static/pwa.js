@@ -178,6 +178,67 @@
     });
   }
 
+  function trackEditableViewport() {
+    const viewport = window.visualViewport;
+    if (!viewport || !(navigator.maxTouchPoints || matchMedia("(pointer: coarse)").matches)) return;
+    const root = document.documentElement;
+    const editable = "textarea:not(:read-only):not(:disabled), input:not(:read-only):not(:disabled)";
+    let width = Math.round(viewport.width);
+    let fullHeight = Math.max(viewport.height, root.clientHeight);
+    let frame = 0;
+    let reveal = false;
+
+    function schedule(shouldReveal = false) {
+      reveal ||= shouldReveal;
+      if (!frame) frame = requestAnimationFrame(measure);
+    }
+
+    function measure() {
+      frame = 0;
+      const shouldReveal = reveal;
+      reveal = false;
+      const unzoomed = Math.abs(viewport.scale - 1) < .02;
+      const active = document.activeElement;
+      const editing = active?.matches(editable);
+      const currentWidth = Math.round(viewport.width);
+      if (unzoomed && (currentWidth !== width || !editing)) {
+        width = currentWidth;
+        fullHeight = Math.max(viewport.height, root.clientHeight);
+      }
+      const keyboardOpen = editing && unzoomed && Math.max(fullHeight, root.clientHeight) - viewport.height > 100;
+      const wasOpen = document.body.classList.contains("keyboard-open");
+      document.body.classList.toggle("keyboard-open", Boolean(keyboardOpen));
+      if (!keyboardOpen) {
+        if (wasOpen) {
+          for (const property of ["height", "top", "width", "left"]) {
+            root.style.removeProperty(`--visual-viewport-${property}`);
+          }
+        }
+        return;
+      }
+
+      root.style.setProperty("--visual-viewport-height", `${viewport.height}px`);
+      root.style.setProperty("--visual-viewport-top", `${viewport.offsetTop}px`);
+      root.style.setProperty("--visual-viewport-width", `${viewport.width}px`);
+      root.style.setProperty("--visual-viewport-left", `${viewport.offsetLeft}px`);
+      if (!shouldReveal) return;
+
+      const bounds = active.getBoundingClientRect();
+      const top = viewport.offsetTop + 12;
+      const bottom = viewport.offsetTop + viewport.height - 12;
+      const distance = bounds.top < top ? bounds.top - top : Math.max(0, bounds.bottom - bottom);
+      if (!distance) return;
+      if (active.closest("dialog[open]")) active.scrollIntoView({ block: "center", inline: "nearest" });
+      else window.scrollBy({ top: distance, behavior: "auto" });
+    }
+
+    viewport.addEventListener("resize", () => schedule(true));
+    viewport.addEventListener("scroll", () => schedule());
+    document.addEventListener("focusin", () => schedule(true));
+    document.addEventListener("focusout", () => schedule());
+    schedule();
+  }
+
   offlineDialog?.addEventListener("cancel", event => event.preventDefault());
   setRetryAction(byId("pwa-offline-retry"), byId("pwa-offline-status"), false);
   setRetryAction(offlinePageRetry, byId("pwa-retry-status"), true);
@@ -185,6 +246,7 @@
   if (!offlinePageRetry) addEventListener("online", () => void checkConnection());
   if (!navigator.onLine) setOffline(true);
 
+  trackEditableViewport();
   window.urutauPwa = Object.freeze({
     isOffline: () => offline,
     checkConnection,

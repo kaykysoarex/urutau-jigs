@@ -21,7 +21,7 @@
       <div id="login-message" class="notice login-message" role="status" hidden></div>
       <form id="login-form" class="login-form" action="/login" method="post">
         <input id="login-csrf" type="hidden" name="_csrf">
-        <label class="field"><span>Usuário</span><input name="username" autocomplete="username" required autofocus></label>
+        <label class="field"><span>Usuário</span><input name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
         <label class="field"><span>Senha</span><input name="password" type="password" autocomplete="current-password" required></label>
         <button id="login-submit" class="button primary" type="submit" disabled><svg class="icon" aria-hidden="true"><use href="/icons.svg#lock"/></svg>Entrar</button>
       </form>

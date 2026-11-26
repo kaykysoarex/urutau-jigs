@@ -39,6 +39,7 @@ const state = {
   settingsBusy: false,
   conversation: null,
   aiOnline: false,
+  aiStatusLoading: false,
   aiBusy: false
 };
 const numberFormat = new Intl.NumberFormat("pt-BR");
@@ -51,6 +52,7 @@ const keyForVariant = ({ weight, color }) => `${weight}/${color}`;
 const activeProducts = () => (state.catalog ?? []).filter(product => product.active && product.variants.some(variant => variant.active));
 const maxItemQuantity = 100000;
 const maxQuoteItems = 250;
+const drawerLayout = matchMedia("(max-width: 940px), (pointer: coarse) and (max-height: 560px)");
 
 class RequestError extends Error {
   constructor(status, message) {
@@ -154,7 +156,9 @@ function pdfLink(number, download, symbolOnly = false) {
     });
   }
   if (symbolOnly) {
-    anchor.replaceChildren(icon(download ? "download" : "eye"));
+    const actionText = element("span", "pdf-action-label", label);
+    actionText.setAttribute("aria-hidden", "true");
+    anchor.replaceChildren(icon(download ? "download" : "eye"), actionText);
     anchor.title = label;
     anchor.setAttribute("aria-label", `${label} do orçamento ${quoteNumber(number)}`);
   }
@@ -181,21 +185,29 @@ function emptyState(title, description, symbol, extra) {
 
 function table(caption, headings, rows, className = "") {
   const wrapper = element("div", "scroll-table");
-  wrapper.tabIndex = 0;
-  wrapper.setAttribute("role", "region");
-  wrapper.setAttribute("aria-label", caption);
   const grid = element("table", `data-table ${className}`.trim());
-  const head = grid.createTHead().insertRow();
+  // Explicit roles retain table navigation when the mobile styles display rows as cards.
+  grid.setAttribute("role", "table");
+  grid.setAttribute("aria-label", caption);
+  const headGroup = grid.createTHead();
+  headGroup.setAttribute("role", "rowgroup");
+  const head = headGroup.insertRow();
+  head.setAttribute("role", "row");
   headings.forEach(([label, style]) => {
     const header = element("th", style, label);
+    header.setAttribute("role", "columnheader");
     header.scope = "col";
     head.append(header);
   });
   const body = grid.createTBody();
+  body.setAttribute("role", "rowgroup");
   rows.forEach(cells => {
     const row = body.insertRow();
-    cells.forEach(([value, style]) => {
+    row.setAttribute("role", "row");
+    cells.forEach(([value, style], index) => {
       const cell = row.insertCell();
+      cell.setAttribute("role", "cell");
+      cell.dataset.label = headings[index][0];
       if (style) cell.className = style;
       if (value instanceof Node) cell.append(value);
       else cell.textContent = value;
@@ -212,10 +224,16 @@ function captioned(primary, secondary) {
 }
 
 function setOptions(select, choices, placeholder, value) {
-  select.replaceChildren(new Option(placeholder, ""), ...choices.map(([id, label]) => new Option(label, id)));
-  if (value !== undefined && [...select.options].some(option => option.value === String(value))) {
-    select.value = String(value);
+  const entries = [["", placeholder], ...choices];
+  if (select.options.length !== entries.length || entries.some(([id, label], index) => {
+    const option = select.options[index];
+    return option.value !== String(id) || option.text !== label;
+  })) {
+    select.replaceChildren(...entries.map(([id, label]) => new Option(label, id)));
   }
+  const requested = value === undefined ? "" : String(value);
+  const next = entries.some(([id]) => String(id) === requested) ? requested : "";
+  if (select.value !== next) select.value = next;
 }
 
 function formFeedback(id, message) {
@@ -233,10 +251,44 @@ function toast(message) {
   toastTimer = setTimeout(() => { node.hidden = true; }, 5000);
 }
 
-function navOpen(open) {
-  byId("sidebar").classList.toggle("is-open", open);
+function navOpen(open, restoreFocus = false) {
+  const sidebar = byId("sidebar");
+  const toggle = byId("nav-toggle");
+  const background = document.querySelector(".body-shell");
+  open = drawerLayout.matches && open;
+  sidebar.classList.toggle("is-open", open);
+  sidebar.inert = drawerLayout.matches && !open;
+  background.inert = open;
+  document.querySelector(".skip-link").inert = open;
   byId("nav-overlay").hidden = !open;
-  byId("nav-toggle").setAttribute("aria-expanded", String(open));
+  toggle.setAttribute("aria-expanded", String(open));
+  if (open) {
+    sidebar.setAttribute("role", "dialog");
+    sidebar.setAttribute("aria-modal", "true");
+    byId("nav-close").focus({ preventScroll: true });
+  } else {
+    sidebar.removeAttribute("role");
+    sidebar.removeAttribute("aria-modal");
+    if (restoreFocus && drawerLayout.matches) toggle.focus({ preventScroll: true });
+  }
+}
+
+function drawerKeydown(event) {
+  const sidebar = byId("sidebar");
+  if (!sidebar.classList.contains("is-open") || document.querySelector("dialog[open]")) return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    navOpen(false, true);
+  } else if (event.key === "Tab") {
+    const focusable = [...sidebar.querySelectorAll("a[href], button:not(:disabled)")]
+      .filter(control => control.getClientRects().length);
+    const first = focusable[0];
+    const last = focusable.at(-1);
+    if ((event.shiftKey && document.activeElement === first) || (!event.shiftKey && document.activeElement === last)) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+    }
+  }
 }
 
 function navigate() {
@@ -332,7 +384,18 @@ function renderItemColors(colors) {
   for (const id of state.selectedColors.keys()) {
     if (!available.has(id)) state.selectedColors.delete(id);
   }
-  grid.replaceChildren(...colors.map(({ id, color }) => {
+  const layoutKey = JSON.stringify([editing, colors.map(({ id, color }) => [id, color])]);
+  if (grid.dataset.layoutKey !== layoutKey) {
+    grid.replaceChildren(...colors.map(createItemColor));
+    grid.dataset.layoutKey = layoutKey;
+  }
+  grid.hidden = colors.length === 0;
+  byId("item-colors-empty").hidden = colors.length > 0;
+  byId("item-bulk-tools").hidden = editing;
+  byId("item-color-summary").hidden = editing;
+  updateItemControls();
+
+  function createItemColor({ id, color }) {
     const option = element("div", "item-color-option");
     const label = element("label", "item-color-check");
     const choice = element("input");
@@ -349,12 +412,7 @@ function renderItemColors(colors) {
     quantity.setAttribute("aria-label", `Quantidade da cor ${color}`);
     option.append(label, quantity);
     return option;
-  }));
-  grid.hidden = colors.length === 0;
-  byId("item-colors-empty").hidden = colors.length > 0;
-  byId("item-bulk-tools").hidden = editing;
-  byId("item-color-summary").hidden = editing;
-  updateItemControls();
+  }
 }
 
 function readItemQuantity(value) {
@@ -444,7 +502,8 @@ function editItem(id) {
   byId("item-cancel").hidden = false;
   renderManualCatalog(variant ? { modelId: variant.modelId, weight: variant.weight } : { modelId: "", weight: "" });
   if (!variant) formFeedback("item-error", "Selecione uma combinação ativa para substituir este item.");
-  byId("item-model").focus();
+  const quantity = byId("item-colors").querySelector(".item-color-quantity:not(:disabled)");
+  (quantity ?? byId("item-model")).focus();
 }
 
 function draftChanged() {
@@ -510,7 +569,7 @@ function renderManualRows() {
   const values = new Map((state.preview?.items ?? []).map(item => [item.variantId, item]));
   const rows = state.draft.map(item => {
     const priced = values.get(item.variantId);
-    const controls = element("div");
+    const controls = element("div", "table-row-actions");
     const edit = action(`Editar ${item.model}, ${item.weight} g, cor ${item.color}`, "edit", () => editItem(item.variantId));
     const remove = action(`Remover ${item.model}, ${item.weight} g, cor ${item.color}`, "trash", () => removeItem(item.variantId), "danger");
     edit.disabled = state.issueBusy;
@@ -524,7 +583,7 @@ function renderManualRows() {
       [controls, "cell-actions"]
     ];
   });
-  container.replaceChildren(table("Itens do orçamento", [["Isca"], ["Qtd.", "numerical"], ["Unitário", "numerical"], ["Subtotal", "numerical"], ["Ações", "cell-actions"]], rows));
+  container.replaceChildren(table("Itens do orçamento", [["Isca"], ["Qtd.", "numerical"], ["Unitário", "numerical"], ["Subtotal", "numerical"], ["Ações", "cell-actions"]], rows, "quote-items-table"));
 }
 
 function draftItems() {
@@ -943,7 +1002,7 @@ async function loadHistory(page) {
       const status = record.status === "PENDENTE" ? element("span", "state-pill pending", "Pendente") : element("span", "state-pill", record.status);
       return [[`Nº ${quoteNumber(record.number)}`, "cell-name"], [record.clientName], [formattedDate(record.createdAt)], [numberFormat.format(record.quantity), "numerical"], [moneyFormat.format(record.total), "numerical"], [status], [pdfActions, "cell-actions"]];
     });
-    content.replaceChildren(table("Orçamentos emitidos", [["Orçamento"], ["Cliente"], ["Data"], ["Unidades", "numerical"], ["Total", "numerical"], ["Status"], ["PDF", "cell-actions"]], rows));
+    content.replaceChildren(table("Orçamentos emitidos", [["Orçamento"], ["Cliente"], ["Data"], ["Unidades", "numerical"], ["Total", "numerical"], ["Status"], ["PDF", "cell-actions"]], rows, "history-table"));
     if (records.totalPages > 1) {
       const previous = action("Página anterior", "chevron-left", () => void loadHistory(records.number - 1));
       const next = action("Próxima página", "chevron-right", () => void loadHistory(records.number + 1));
@@ -1017,15 +1076,17 @@ function renderCatalogVariants() {
     active.checked = variant.active;
     active.setAttribute("aria-label", `Ativar ${variant.weight} g, cor ${variant.color}`);
     active.addEventListener("change", () => { variant.active = active.checked; });
+    const activeTarget = element("label", "table-check-target");
+    activeTarget.append(active);
     const remove = action(`Remover ${variant.weight} g, cor ${variant.color}`, "trash", () => {
       state.catalogVariants = state.catalogVariants.filter(entry => entry !== variant);
       renderCatalogVariants();
     }, "danger");
     active.disabled = state.catalogSaving;
     remove.disabled = state.catalogSaving;
-    return [[`${variant.weight} g`], [variant.color], [active], [remove, "cell-actions"]];
+    return [[`${variant.weight} g`], [variant.color], [activeTarget], [remove, "cell-actions"]];
   });
-  wrapper.replaceChildren(table("Combinações do modelo", [["Gramatura"], ["Cor"], ["Ativa"], ["Ações", "cell-actions"]], rows));
+  wrapper.replaceChildren(table("Combinações do modelo", [["Gramatura"], ["Cor"], ["Ativa"], ["Ações", "cell-actions"]], rows, "variant-table"));
 }
 
 function addCombinations() {
@@ -1105,6 +1166,7 @@ function renderPriceModels() {
 
 function editPrice(variant, field, value) {
   const current = state.priceEdits.get(variant.id) ?? { variant };
+  current.variant = variant;
   const original = priceInputValue(variant[field]);
   if (value === original) delete current[field];
   else current[field] = value;
@@ -1117,6 +1179,12 @@ function priceInputValue(price) {
   return price == null ? "" : Number(price).toFixed(2).replace(".", ",");
 }
 
+function syncPriceInput(input, variant, field) {
+  const value = state.priceEdits.get(variant.id)?.[field] ?? priceInputValue(variant[field]);
+  if (input !== document.activeElement && input.value !== value) input.value = value;
+  input.disabled = state.priceBusy;
+}
+
 function renderPrices() {
   const product = state.catalog?.find(entry => String(entry.id) === byId("price-model").value);
   const content = byId("price-content");
@@ -1126,26 +1194,54 @@ function renderPrices() {
     return;
   }
   const variants = [...product.variants].sort((first, second) => first.weight - second.weight || first.color.localeCompare(second.color, "pt-BR"));
+  const caption = `Preços de ${product.name}`;
+  const currentTable = content.querySelector(".price-table");
+  const currentRows = currentTable?.tBodies[0].rows;
+  if (currentTable?.dataset.productId === String(product.id) && currentRows?.length === variants.length
+    && variants.every((variant, index) => currentRows[index].dataset.variantId === String(variant.id))) {
+    currentTable.setAttribute("aria-label", caption);
+    variants.forEach((variant, index) => {
+      const row = currentRows[index];
+      const pending = state.priceEdits.get(variant.id);
+      if (pending) pending.variant = variant;
+      const [retail, wholesale] = row.querySelectorAll(".price-entry input");
+      syncPriceInput(retail, variant, "retailPrice");
+      syncPriceInput(wholesale, variant, "wholesalePrice");
+      const status = row.querySelector(".state-pill");
+      const active = variant.active && product.active;
+      status.classList.toggle("active", active);
+      const statusText = active ? "Ativa" : "Inativa";
+      if (status.textContent !== statusText) status.textContent = statusText;
+    });
+    return;
+  }
   const inputFor = (variant, field, label) => {
     const input = document.createElement("input");
     input.type = "text";
     input.inputMode = "decimal";
+    input.autocomplete = "off";
     input.maxLength = 13;
     input.placeholder = "Sem preço";
-    input.value = state.priceEdits.get(variant.id)?.[field] ?? priceInputValue(variant[field]);
-    input.disabled = state.priceBusy;
+    syncPriceInput(input, variant, field);
     input.setAttribute("aria-label", `Preço de ${label} em reais, ${variant.weight} g, cor ${variant.color}`);
-    input.addEventListener("input", () => editPrice(variant, field, input.value));
+    input.addEventListener("input", () => {
+      const latest = state.catalog?.find(entry => entry.id === product.id)?.variants.find(entry => entry.id === variant.id);
+      if (latest) editPrice(latest, field, input.value);
+    });
     return input;
   };
   const rows = variants.map(variant => [
     [`${variant.weight} g`, "cell-name"],
     [variant.color],
-    [inputFor(variant, "retailPrice", "consumidor final")],
-    [inputFor(variant, "wholesalePrice", "lojista")],
+    [inputFor(variant, "retailPrice", "consumidor final"), "price-entry"],
+    [inputFor(variant, "wholesalePrice", "lojista"), "price-entry"],
     [element("span", `state-pill${variant.active && product.active ? " active" : ""}`, variant.active && product.active ? "Ativa" : "Inativa")]
   ]);
-  content.replaceChildren(table(`Preços de ${product.name}`, [["Gramatura"], ["Cor"], ["Consumidor final (R$)"], ["Lojista (R$)"], ["Combinação"]], rows, "price-table"));
+  const listing = table(caption, [["Gramatura"], ["Cor"], ["Consumidor final (R$)"], ["Lojista (R$)"], ["Combinação"]], rows, "price-table");
+  const listingTable = listing.querySelector("table");
+  listingTable.dataset.productId = String(product.id);
+  variants.forEach((variant, index) => { listingTable.tBodies[0].rows[index].dataset.variantId = String(variant.id); });
+  content.replaceChildren(listing);
 }
 
 function normalizeMoney(value) {
@@ -1231,6 +1327,7 @@ async function saveSettings(event) {
 
 function appendChat(text, role = "assistant", questions = []) {
   const log = byId("chat-log");
+  const followLatest = role === "admin" || log.scrollHeight - log.scrollTop - log.clientHeight < 48;
   const row = element("div", `chat-row ${role}`);
   const bubble = element("div", "chat-bubble");
   bubble.append(element("p", "", text));
@@ -1241,7 +1338,7 @@ function appendChat(text, role = "assistant", questions = []) {
   }
   row.append(element("strong", "", role === "admin" ? "Você" : "URUTAU AI"), bubble);
   log.append(row);
-  log.scrollTop = log.scrollHeight;
+  if (followLatest) log.scrollTop = log.scrollHeight;
   return row;
 }
 
@@ -1251,6 +1348,8 @@ function initializeChat() {
 }
 
 async function checkAI() {
+  if (state.aiStatusLoading) return;
+  state.aiStatusLoading = true;
   const warning = byId("ai-warning");
   try {
     const status = await api("/api/ai");
@@ -1268,24 +1367,31 @@ async function checkAI() {
     warning.replaceChildren(element("span", "", error.message), retry);
     warning.hidden = false;
   } finally {
+    state.aiStatusLoading = false;
     renderAIControl();
   }
 }
 
 function renderAIControl() {
   const blocked = state.aiBusy || !state.aiOnline;
-  byId("chat-message").disabled = blocked;
+  byId("chat-message").disabled = !state.aiOnline;
   byId("chat-send").disabled = blocked;
   byId("chat-send").querySelector("span").textContent = state.aiBusy ? "Processando…" : "Enviar";
   byId("ai-new").disabled = blocked;
   renderAIItems();
 }
 
+const emptyAIItems = [];
+let renderedAIItems;
+
 function renderAIItems() {
-  const items = state.conversation?.items ?? [];
+  const items = state.conversation?.items ?? emptyAIItems;
+  byId("ai-review").disabled = !items.length || state.conversation?.needsClarification || state.aiBusy || state.issueBusy;
+  window.urutauPwa?.renderUpdate();
+  if (items === renderedAIItems) return;
+  renderedAIItems = items;
   const quantity = items.reduce((sum, item) => sum + item.quantity, 0);
   byId("ai-count").textContent = items.length ? `${unitLabel(quantity)} · ${items.length} ${items.length === 1 ? "combinação" : "combinações"}` : "Nenhum item identificado";
-  byId("ai-review").disabled = !items.length || state.conversation.needsClarification || state.aiBusy || state.issueBusy;
   const container = byId("ai-items");
   container.replaceChildren();
   if (items.length) {
@@ -1299,23 +1405,23 @@ function renderAIItems() {
     });
     container.append(list);
   }
-  window.urutauPwa?.renderUpdate();
 }
 
 async function startConversation() {
   if (state.aiBusy || !state.aiOnline) return;
+  const field = byId("chat-message");
+  const draft = field.value;
   state.aiBusy = true;
   renderAIControl();
   try {
     state.conversation = await api("/api/ai/conversations", { method: "POST" });
-    byId("chat-message").value = "";
+    if (field.value === draft) field.value = "";
     initializeChat();
   } catch (error) {
     appendChat(error.message, "error");
   } finally {
     state.aiBusy = false;
     renderAIControl();
-    if (state.route?.page === "ai") byId("chat-message").focus();
   }
 }
 
@@ -1323,7 +1429,8 @@ async function sendMessage(event) {
   event.preventDefault();
   if (state.aiBusy || !state.aiOnline) return;
   const field = byId("chat-message");
-  const message = field.value.trim();
+  const draft = field.value;
+  const message = draft.trim();
   if (!message) return;
   appendChat(message, "admin");
   field.value = "";
@@ -1341,13 +1448,12 @@ async function sendMessage(event) {
     }
   } catch (error) {
     progress.remove();
-    field.value = message;
+    field.value = field.value ? `${draft}\n\n${field.value}` : draft;
     if (error.status === 404) state.conversation = null;
     appendChat(error.message, "error");
   } finally {
     state.aiBusy = false;
     renderAIControl();
-    if (state.route?.page === "ai") field.focus();
   }
 }
 
@@ -1369,13 +1475,15 @@ function bindEvents() {
   });
   addEventListener("hashchange", navigate);
   byId("nav-toggle").addEventListener("click", () => navOpen(byId("nav-toggle").getAttribute("aria-expanded") === "false"));
-  byId("nav-overlay").addEventListener("click", () => { navOpen(false); byId("nav-toggle").focus(); });
-  addEventListener("keydown", event => {
-    if (event.key === "Escape" && byId("sidebar").classList.contains("is-open")) {
-      navOpen(false);
-      byId("nav-toggle").focus();
-    }
+  for (const id of ["nav-overlay", "nav-close"]) {
+    byId(id).addEventListener("click", () => navOpen(false, true));
+  }
+  byId("sidebar").addEventListener("click", event => {
+    const routeLink = event.target.closest("a[href^='#']");
+    if (routeLink && byId("sidebar").classList.contains("is-open")) navOpen(false, routeLink.hash === location.hash);
   });
+  drawerLayout.addEventListener("change", () => navOpen(false));
+  addEventListener("keydown", drawerKeydown);
   byId("client-form").addEventListener("submit", event => event.preventDefault());
   byId("item-model").addEventListener("change", () => {
     state.selectedColors.clear();
