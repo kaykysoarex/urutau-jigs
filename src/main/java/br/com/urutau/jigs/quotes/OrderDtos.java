@@ -2,6 +2,7 @@
 package br.com.urutau.jigs.quotes;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -20,13 +21,20 @@ final class OrderDtos {
     record Cancellation(@NotBlank @Size(max = 500) String reason) {}
     record Event(CommercialEvent.Action action, String actor, Instant occurredAt,
                  LocalDate expectedOn, String notes, String reason) {}
+    enum Fulfillment { EM_PRODUCAO, ENTREGUE }
     record Card(long quoteNumber, Long orderNumber, String clientName, Instant date, int quantity,
                 @JsonFormat(shape = JsonFormat.Shape.STRING) BigDecimal total,
-                QuoteDtos.Status status, QuoteDtos.PriceTier priceTier) {}
-    record Counts(long pending, long confirmed, long cancelled) {}
+                QuoteDtos.Status status, QuoteDtos.PriceTier priceTier, Instant deliveredAt) {
+        @JsonProperty("fulfillment")
+        Fulfillment fulfillment() {
+            if (status != QuoteDtos.Status.CONFIRMADO || orderNumber == null) return null;
+            return deliveredAt == null ? Fulfillment.EM_PRODUCAO : Fulfillment.ENTREGUE;
+        }
+    }
+    record Counts(long pending, long confirmed, long cancelled, long inProduction, long delivered) {}
     record Listing(List<Card> content, int page, int pages, Counts counts) {}
     record Detail(Card commercial, QuoteDtos.Client client, List<QuoteDtos.Line> items,
                   String internalId, Instant confirmedAt, String confirmedBy, LocalDate expectedOn,
                   String notes, Long version, Instant cancelledAt, String cancelledBy,
-                  String cancellationReason, List<Event> events, Long customerId) {}
+                  String cancellationReason, List<Event> events, Long customerId, String deliveredBy) {}
 }

@@ -290,6 +290,14 @@ function renderCustomer(detail) {
   showCustomerDialog(customer.name);
 }
 
+function refreshCustomerOrderStatus(record) {
+  for (const card of byId("customer-body").querySelectorAll("[data-order-number]")) {
+    if (card.dataset.orderNumber === String(record.quoteNumber)) {
+      card.querySelector(".state-pill")?.replaceWith(orderStatusBadge(record.fulfillment ?? record.status));
+    }
+  }
+}
+
 async function loadCustomerHistory(id, orders, page, host) {
   host.replaceChildren(element("p", "order-meta", "Consultando histórico…"));
   try {

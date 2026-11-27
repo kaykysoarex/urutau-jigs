@@ -101,6 +101,8 @@ class CustomerIntegrationTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.indicators.pending").value(1))
                 .andExpect(jsonPath("$.indicators.sales.orders").value(0));
         submit(post(order + "/confirm"), Map.of()).andExpect(status().isOk());
+        submit(post(order + "/deliver"), Map.of()).andExpect(status().isOk())
+                .andExpect(jsonPath("$.commercial.fulfillment").value("ENTREGUE"));
         long other = issue("Segundo pedido", null);
         submit(post("/api/orders/" + other + "/confirm"), Map.of("customer", Map.of("id", id)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.customerId").value(id));
@@ -114,7 +116,8 @@ class CustomerIntegrationTest {
                 .andExpect(jsonPath("$.indicators.lastOrderAt").isNotEmpty());
         mvc.perform(get(customer + "/history").param("orders", "true").with(user("first").roles("ADMIN")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.content.length()").value(2))
-                .andExpect(jsonPath("$.content[0].status").value("CANCELADO"));
+                .andExpect(jsonPath("$.content[0].status").value("CANCELADO"))
+                .andExpect(jsonPath("$.content[1].fulfillment").value("ENTREGUE"));
         submit(put(customer), new CustomerDtos.Change(0L, input("Nome Atualizado", "", false))).andExpect(status().isOk());
         byte[] pdf = mvc.perform(get("/api/quotes/" + number + "/pdf").with(user("first").roles("ADMIN")))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray();

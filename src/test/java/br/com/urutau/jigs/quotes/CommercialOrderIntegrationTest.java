@@ -123,6 +123,51 @@ class CommercialOrderIntegrationTest {
             .andExpect(status().isOk()).andExpect(jsonPath("$.content[0].quoteNumber").value(waiting.number()));
     }
 
+    @Test
+    void tracksDeliverySeparatelyFromConfirmationAndAuditsOnlyOnce() throws Exception {
+        long variant = catalog.list().stream().filter(model -> model.name().equals("Spinner")).findFirst()
+            .orElseThrow().variants().getFirst().id();
+        long number = issue("Cliente Entrega QA", variant).number();
+        String path = "/api/orders/" + number;
+        mvc.perform(post(path + "/deliver").with(csrf())).andExpect(status().isUnauthorized());
+        mvc.perform(post(path + "/deliver").with(user("admin-qa").roles("ADMIN"))).andExpect(status().isForbidden());
+        update(path + "/deliver", "{}").andExpect(status().isConflict());
+        var confirmed = parse(confirm(path).andExpect(status().isOk())
+            .andExpect(jsonPath("$.commercial.fulfillment").value("EM_PRODUCAO")));
+        mvc.perform(get("/api/orders").param("fulfillment", "EM_PRODUCAO").param("search", "Cliente Entrega QA")
+            .with(user("admin-qa").roles("ADMIN"))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.content[0].quoteNumber").value(number));
+        var start = new CountDownLatch(1);
+        JsonNode delivered;
+        try (var workers = Executors.newFixedThreadPool(2)) {
+            Callable<JsonNode> submit = () -> {
+                start.await();
+                return parse(update(path + "/deliver", "{}").andExpect(status().isOk()));
+            };
+            var a = workers.submit(submit);
+            var b = workers.submit(submit);
+            start.countDown();
+            delivered = a.get(10, TimeUnit.SECONDS);
+            assertThat(b.get(10, TimeUnit.SECONDS)).isEqualTo(delivered);
+        }
+        assertThat(delivered.get("confirmedAt")).isEqualTo(confirmed.get("confirmedAt"));
+        assertThat(delivered.get("confirmedBy")).isEqualTo(confirmed.get("confirmedBy"));
+        assertThat(delivered.get("commercial").get("status").asString()).isEqualTo("CONFIRMADO");
+        assertThat(delivered.get("commercial").get("fulfillment").asString()).isEqualTo("ENTREGUE");
+        assertThat(delivered.get("commercial").get("deliveredAt").asString()).isNotBlank();
+        assertThat(delivered.get("deliveredBy").asString()).isEqualTo("admin-qa");
+        assertThat(delivered.get("events").size()).isEqualTo(2);
+        assertThat(delivered.get("events").get(0).get("action").asString()).isEqualTo("ENTREGA");
+        mvc.perform(get("/api/orders").param("fulfillment", "ENTREGUE").param("search", "Cliente Entrega QA")
+            .with(user("admin-qa").roles("ADMIN"))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.content[0].quoteNumber").value(number))
+            .andExpect(jsonPath("$.counts.delivered").value(1));
+        update(path + "/cancel", "{\"reason\":\"Cancelamento de teste\"}").andExpect(status().isOk())
+            .andExpect(jsonPath("$.commercial.deliveredAt").isNotEmpty())
+            .andExpect(jsonPath("$.commercial.fulfillment").isEmpty());
+        update(path + "/deliver", "{}").andExpect(status().isConflict());
+    }
+
     private void price(long id, String amount) {
         catalog.updatePrices(new PricesUpdate(List.of(new VariantPriceUpdate(id, new BigDecimal(amount), new BigDecimal("16")))));
     }

@@ -25,6 +25,8 @@ interface QuoteRepository extends JpaRepository<CommercialQuote, Long> {
     String COMMERCIAL_FILTER = """
         from CommercialQuote q left join CommercialOrder o on o.quote = q
         where (:status is null or q.status = :status)
+          and (:delivered is null or (o.number is not null and ((:delivered = true and o.deliveredAt is not null)
+                or (:delivered = false and o.deliveredAt is null))))
           and (:search = '' or locate(lower(:search), lower(q.clientName)) > 0
                or q.id = :number or o.number = :number)
         """;
@@ -32,7 +34,7 @@ interface QuoteRepository extends JpaRepository<CommercialQuote, Long> {
     String COMMERCIAL_CARD = """
         select new br.com.urutau.jigs.quotes.OrderDtos$Card(
             q.id, o.number, q.clientName, coalesce(q.cancelledAt, o.confirmedAt, q.createdAt),
-            q.totalQuantity, q.total, q.status, q.priceTier)
+            q.totalQuantity, q.total, q.status, q.priceTier, o.deliveredAt)
         """;
 
     @Query(value = COMMERCIAL_CARD + COMMERCIAL_FILTER + """
@@ -41,7 +43,8 @@ interface QuoteRepository extends JpaRepository<CommercialQuote, Long> {
                  q.id desc
         """, countQuery = "select count(q) " + COMMERCIAL_FILTER)
     Page<OrderDtos.Card> commercialList(@Param("status") QuoteDtos.Status status, @Param("search") String search,
-                                      @Param("number") long number, @Param("newest") boolean newest, Pageable page);
+                                      @Param("number") long number, @Param("newest") boolean newest,
+                                      @Param("delivered") Boolean delivered, Pageable page);
 
     long countByCustomerId(long customerId);
     long countByCustomerIdAndStatus(long customerId, QuoteDtos.Status status);

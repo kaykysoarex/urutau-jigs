@@ -20,6 +20,9 @@ class CommercialOrder {
     Instant confirmedAt;
     @Column(nullable = false, length = 80)
     String confirmedBy;
+    Instant deliveredAt;
+    @Column(length = 80)
+    String deliveredBy;
     LocalDate expectedOn;
     @Column(nullable = false, length = 1000)
     String notes;
@@ -34,6 +37,11 @@ class CommercialOrder {
         this.confirmedAt = now;
         this.confirmedBy = actor;
         changeTerms(terms);
+    }
+
+    void deliver(Instant now, String actor) {
+        deliveredAt = now;
+        deliveredBy = actor;
     }
 
     void changeTerms(OrderDtos.Terms terms) {

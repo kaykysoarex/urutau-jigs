@@ -31,7 +31,7 @@ class CommercialOrderService {
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
-    OrderDtos.Listing list(QuoteDtos.Status status, String query, boolean newest, int page) {
+    OrderDtos.Listing list(QuoteDtos.Status status, OrderDtos.Fulfillment fulfillment, String query, boolean newest, int page) {
         if (page < 0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Informe uma página válida.");
         String search = query.strip();
         long number = -1;
@@ -42,9 +42,17 @@ class CommercialOrderService {
                 // A numeric customer name can still match the text search.
             }
         }
-        var found = quotes.commercialList(status, search, number, newest, PageRequest.of(page, 18));
-        var counts = new OrderDtos.Counts(quotes.countByStatus(PENDENTE), quotes.countByStatus(CONFIRMADO),
-                quotes.countByStatus(CANCELADO));
+
+        if (fulfillment != null && status != null && status != CONFIRMADO) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "O filtro de entrega exige pedidos confirmados.");
+        }
+        Boolean delivered = fulfillment == null ? null : fulfillment == OrderDtos.Fulfillment.ENTREGUE;
+        var found = quotes.commercialList(fulfillment == null ? status : CONFIRMADO, search, number, newest,
+                delivered, PageRequest.of(page, 18));
+        long confirmed = quotes.countByStatus(CONFIRMADO);
+        long deliveredCount = orders.countByQuoteStatusAndDeliveredAtIsNotNull(CONFIRMADO);
+        var counts = new OrderDtos.Counts(quotes.countByStatus(PENDENTE), confirmed,
+                quotes.countByStatus(CANCELADO), confirmed - deliveredCount, deliveredCount);
         return new OrderDtos.Listing(found.getContent(), page, found.getTotalPages(), counts);
     }
 
@@ -67,6 +75,22 @@ class CommercialOrderService {
         var order = orders.saveAndFlush(new CommercialOrder(quote, now, actor, terms));
         quote.confirm();
         events.save(new CommercialEvent(quote, CommercialEvent.Action.CONFIRMACAO, actor, now, order, null));
+        return detail(quote, order);
+    }
+
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    OrderDtos.Detail deliver(long quoteNumber, String actor) {
+        var quote = locked(quoteNumber);
+        if (quote.summary().status() != CONFIRMADO) {
+            throw conflict("Somente pedidos confirmados podem ser marcados como entregues.");
+        }
+        var order = orders.findByQuoteId(quoteNumber).orElseThrow(CommercialOrderService::missing);
+        if (order.deliveredAt == null) {
+            var deliveredAt = now();
+            order.deliver(deliveredAt, actor);
+            events.save(new CommercialEvent(quote, CommercialEvent.Action.ENTREGA, actor, deliveredAt, null, null));
+            orders.flush();
+        }
         return detail(quote, order);
     }
 
@@ -123,12 +147,14 @@ class CommercialOrderService {
         var summary = quote.summary();
         var date = quote.cancelledAt != null ? quote.cancelledAt : order == null ? summary.createdAt() : order.confirmedAt;
         var card = new OrderDtos.Card(summary.number(), order == null ? null : order.number, summary.clientName(), date,
-                summary.quantity(), summary.total(), summary.status(), summary.priceTier());
+                summary.quantity(), summary.total(), summary.status(), summary.priceTier(),
+                order == null ? null : order.deliveredAt);
         return new OrderDtos.Detail(card, quote.customer(), quote.approvedItems(), order == null ? null : order.internalId,
                 order == null ? null : order.confirmedAt, order == null ? null : order.confirmedBy,
                 order == null ? null : order.expectedOn, order == null ? null : order.notes,
                 order == null ? null : order.version, quote.cancelledAt, quote.cancelledBy, quote.cancellationReason,
-                events.findByQuoteIdOrderByIdDesc(summary.number()).stream().map(CommercialEvent::view).toList(), quote.customerId);
+                events.findByQuoteIdOrderByIdDesc(summary.number()).stream().map(CommercialEvent::view).toList(), quote.customerId,
+                order == null ? null : order.deliveredBy);
     }
 
     private static void validateDate(OrderDtos.Terms terms) {

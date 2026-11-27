@@ -19,10 +19,11 @@ class CommercialOrderController {
 
     @GetMapping
     ResponseEntity<OrderDtos.Listing> list(@RequestParam(required = false) QuoteDtos.Status status,
+            @RequestParam(required = false) OrderDtos.Fulfillment fulfillment,
             @RequestParam(defaultValue = "") @Size(max = 120) String search,
             @RequestParam(defaultValue = "true") boolean newest,
             @RequestParam(defaultValue = "0") int page) {
-        return privateResponse(orders.list(status, search, newest, page));
+        return privateResponse(orders.list(status, fulfillment, search, newest, page));
     }
 
     @GetMapping("/{quoteNumber}")
@@ -34,6 +35,11 @@ class CommercialOrderController {
     ResponseEntity<OrderDtos.Detail> confirm(@PathVariable long quoteNumber, @Valid @RequestBody OrderDtos.Terms terms,
                                              Principal admin) {
         return privateResponse(orders.confirm(quoteNumber, terms, admin.getName()));
+    }
+
+    @PostMapping("/{quoteNumber}/deliver")
+    ResponseEntity<OrderDtos.Detail> deliver(@PathVariable long quoteNumber, Principal admin) {
+        return privateResponse(orders.deliver(quoteNumber, admin.getName()));
     }
 
     @PutMapping("/{quoteNumber}/terms")

@@ -231,12 +231,13 @@
         <section class="panel panel-body order-controls" aria-label="Consulta de pedidos">
           <dl class="order-counts">
             <div><dt>Aguardando confirmação</dt><dd id="orders-pending">0</dd></div>
-            <div><dt>Confirmados</dt><dd id="orders-confirmed">0</dd></div>
+            <div><dt>Em produção</dt><dd id="orders-inProduction">0</dd></div>
+            <div><dt>Entregues</dt><dd id="orders-delivered">0</dd></div>
             <div><dt>Cancelados</dt><dd id="orders-cancelled">0</dd></div>
           </dl>
           <form id="order-filters" class="order-fields">
             <label class="field"><span>Pesquisar por nome ou número</span><input id="order-search" type="search" maxlength="120"></label>
-            <label class="field"><span>Estado comercial</span><select id="order-status"><option value="">Todos</option><option value="PENDENTE">Aguardando confirmação</option><option value="CONFIRMADO">Confirmado</option><option value="CANCELADO">Cancelado</option></select></label>
+            <label class="field"><span>Estado do pedido</span><select id="order-status"><option value="">Todos</option><option value="PENDENTE">Aguardando confirmação</option><option value="EM_PRODUCAO">Em produção</option><option value="ENTREGUE">Entregue</option><option value="CANCELADO">Cancelado</option></select></label>
             <label class="field"><span>Ordenação por data</span><select id="order-sort"><option value="true">Mais recentes</option><option value="false">Mais antigos</option></select></label>
           </form>
         </section>

@@ -2,7 +2,8 @@
 "use strict";
 
 const ordersUi = { loading: 0, timer: null, detail: null, detailRevision: 0, mode: "detail", busy: false, opener: null, page: 0 };
-const orderLabels = { PENDENTE: "Aguardando confirmação", CONFIRMADO: "Confirmado", CANCELADO: "Cancelado" };
+const orderLabels = { PENDENTE: "Aguardando confirmação", CONFIRMADO: "Confirmado", CANCELADO: "Cancelado",
+  EM_PRODUCAO: "Em produção", ENTREGUE: "Entregue" };
 const orderDateTime = new Intl.DateTimeFormat("pt-BR", {
   dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo"
 });
@@ -30,7 +31,8 @@ async function loadOrders(page) {
     newest: byId("order-sort").value,
     page
   });
-  if (byId("order-status").value) query.set("status", byId("order-status").value);
+  const filter = byId("order-status").value;
+  if (filter) query.set(["EM_PRODUCAO", "ENTREGUE"].includes(filter) ? "fulfillment" : "status", filter);
   const list = byId("orders-list");
   list.setAttribute("aria-busy", "true");
   formFeedback("orders-feedback", "Carregando registros comerciais…");
@@ -39,7 +41,7 @@ async function loadOrders(page) {
     if (request !== ordersUi.loading) return;
     if (result.pages > 0 && page >= result.pages) return void loadOrders(result.pages - 1);
     ordersUi.page = page;
-    for (const key of ["pending", "confirmed", "cancelled"]) {
+    for (const key of ["pending", "inProduction", "delivered", "cancelled"]) {
       byId(`orders-${key}`).textContent = numberFormat.format(result.counts[key]);
     }
     const focused = document.activeElement?.closest?.("[data-order-number]")?.dataset.orderNumber;
@@ -66,7 +68,7 @@ function orderCard(record) {
   const identification = record.orderNumber == null ? `Orçamento nº ${quoteNumber(record.quoteNumber)}`
     : `Pedido nº ${quoteNumber(record.orderNumber)} · Orçamento nº ${quoteNumber(record.quoteNumber)}`;
   const header = element("div", "order-card-heading");
-  header.append(element("h2", "", record.clientName), orderStatusBadge(record.status));
+  header.append(element("h2", "", record.clientName), orderStatusBadge(record.fulfillment ?? record.status));
   const actions = element("div", "order-actions");
   actions.append(orderButton("Ver detalhes", record.quoteNumber, "detail"), pdfLink(record.quoteNumber, false));
   if (record.status === "PENDENTE") actions.prepend(orderButton("Confirmar pedido", record.quoteNumber, "confirm"));
@@ -117,13 +119,13 @@ function renderOrderDialog(mode) {
   const record = data.commercial;
   ordersUi.mode = mode;
   const title = byId("order-dialog-title");
-  title.textContent = { confirm: "Confirmar pedido", edit: "Editar pedido", cancel: "Cancelar registro", customer: "Vincular cadastro" }[mode]
+  title.textContent = { confirm: "Confirmar pedido", edit: "Editar pedido", cancel: "Cancelar registro", customer: "Vincular cadastro", deliver: "Marcar como entregue" }[mode]
     ?? (record.orderNumber == null ? "Detalhes do orçamento" : "Detalhes do pedido");
   const customer = data.client;
   const facts = [
     ["Orçamento", quoteNumber(record.quoteNumber)], ["Cliente", customer.name], ["Total de iscas", unitLabel(record.quantity)],
     ["Valor aprovado", moneyFormat.format(record.total)], ["Tabela comercial", priceTierLabel(record.priceTier)],
-    ["Estado", orderLabels[record.status]]
+    ["Estado", orderLabels[record.fulfillment ?? record.status]]
   ];
   if (mode === "detail") {
     if (record.orderNumber != null) facts.unshift(["Pedido", quoteNumber(record.orderNumber)]);
@@ -131,6 +133,7 @@ function renderOrderDialog(mode) {
     if (customer.city || customer.state) facts.push(["Cidade / UF", [customer.city, customer.state].filter(Boolean).join(" – ")]);
     if (data.confirmedAt) facts.push(["Confirmação", orderDate(data.confirmedAt)], ["Confirmado por", data.confirmedBy],
       ["Prazo previsto", orderCalendar(data.expectedOn)], ["Observações", data.notes || "—"]);
+    if (record.deliveredAt) facts.push(["Entrega", orderDate(record.deliveredAt)], ["Entregue por", data.deliveredBy]);
     if (data.cancelledAt) facts.push(["Cancelamento", orderDate(data.cancelledAt)], ["Cancelado por", data.cancelledBy],
       ["Motivo", data.cancellationReason]);
   }
@@ -138,7 +141,7 @@ function renderOrderDialog(mode) {
   body.replaceChildren(orderFacts(facts));
   if (mode === "detail") renderOrderDetail(body, data);
   byId("order-form").hidden = mode === "detail";
-  byId("order-date-field").hidden = byId("order-notes-field").hidden = mode === "cancel" || mode === "customer";
+  byId("order-date-field").hidden = byId("order-notes-field").hidden = !["confirm", "edit"].includes(mode);
   const picker = byId("order-customer-picker");
   picker.hidden = data.customerId != null || !["confirm", "customer"].includes(mode);
   ordersUi.customerPicker = picker.hidden ? null : mountCustomerPicker(picker, { phone: () => data.client.phone, allowRegister: true, suggestPhone: true });
@@ -147,7 +150,7 @@ function renderOrderDialog(mode) {
   byId("order-expected").value = data.expectedOn ?? "";
   byId("order-notes").value = data.notes ?? "";
   byId("order-reason").value = "";
-  byId("order-submit").textContent = { confirm: "Confirmar pedido", edit: "Salvar alterações", cancel: "Confirmar cancelamento", customer: "Vincular cliente" }[mode] ?? "";
+  byId("order-submit").textContent = { confirm: "Confirmar pedido", edit: "Salvar alterações", cancel: "Confirmar cancelamento", customer: "Vincular cliente", deliver: "Confirmar entrega" }[mode] ?? "";
   formFeedback("order-form-error", "");
   byId("order-dialog").scrollTop = 0;
   title.focus({ preventScroll: true });
@@ -169,6 +172,7 @@ function renderOrderDetail(body, data) {
     quoteShareButton(record.quoteNumber, record.clientName));
   const transitions = record.status === "PENDENTE" ? [["Confirmar pedido", "confirm"], ["Cancelar orçamento", "cancel"]]
     : record.status === "CONFIRMADO" ? [["Editar prazo e observações", "edit"], ["Cancelar pedido", "cancel"]] : [];
+  if (record.fulfillment === "EM_PRODUCAO") transitions.unshift(["Marcar como entregue", "deliver"]);
   for (const [label, mode] of transitions) {
     const button = element("button", "button secondary", label);
     button.type = "button";
@@ -185,7 +189,7 @@ function renderOrderDetail(body, data) {
   if (!data.events.length) return;
   const audit = element("details", "order-audit");
   const events = element("ul", "order-lines");
-  const descriptions = { CONFIRMACAO: "Confirmação", EDICAO: "Edição", CANCELAMENTO: "Cancelamento", VINCULO: "Vínculo com cliente" };
+  const descriptions = { CONFIRMACAO: "Confirmação", EDICAO: "Edição", CANCELAMENTO: "Cancelamento", VINCULO: "Vínculo com cliente", ENTREGA: "Entrega" };
   for (const event of data.events) {
     const row = element("li", "", `${descriptions[event.action]} · ${orderDate(event.occurredAt)} · ${event.actor}`);
     if (event.expectedOn) row.append(element("span", "", `Prazo: ${orderCalendar(event.expectedOn)}`));
@@ -204,13 +208,14 @@ async function submitOrderChange(event) {
   const isCancel = ordersUi.mode === "cancel";
   const record = ordersUi.detail.commercial;
   const isLink = ordersUi.mode === "customer";
-  const suffix = isEdit ? "terms" : isCancel ? "cancel" : isLink ? "customer" : "confirm";
+  const isDelivery = ordersUi.mode === "deliver";
+  const suffix = isEdit ? "terms" : isCancel ? "cancel" : isLink ? "customer" : isDelivery ? "deliver" : "confirm";
   const terms = { expectedOn: byId("order-expected").value || null, notes: byId("order-notes").value };
   const reason = byId("order-reason").value.trim();
   if (isCancel && !reason) return formFeedback("order-form-error", "Informe o motivo do cancelamento.");
   const customer = ordersUi.customerPicker?.selection() ?? null;
   if (isLink && !customer) return formFeedback("order-form-error", "Selecione um cadastro ou marque a opção de cadastrar.");
-  const body = isEdit ? { version: ordersUi.detail.version, terms } : isCancel ? { reason } : isLink ? customer : { ...terms, customer };
+  const body = isEdit ? { version: ordersUi.detail.version, terms } : isCancel ? { reason } : isLink ? customer : isDelivery ? undefined : { ...terms, customer };
   const form = byId("order-form");
   ordersUi.busy = true;
   for (const control of form.elements) control.disabled = true;
@@ -218,9 +223,10 @@ async function submitOrderChange(event) {
   try {
     ordersUi.detail = await api(`/api/orders/${record.quoteNumber}/${suffix}`, { method: isEdit || isLink ? "PUT" : "POST", body });
     renderOrderDialog("detail");
-    toast(isCancel ? "Registro cancelado." : isEdit ? "Alterações salvas." : isLink ? "Cliente vinculado." : "Pedido confirmado com sucesso.");
+    toast(isCancel ? "Registro cancelado." : isEdit ? "Alterações salvas." : isLink ? "Cliente vinculado." : isDelivery ? "Pedido marcado como entregue." : "Pedido confirmado com sucesso.");
     if (state.route?.page === "orders") void loadOrders(ordersUi.page);
     if (state.route?.page === "history") void loadHistory(0);
+    if (isDelivery) refreshCustomerOrderStatus(ordersUi.detail.commercial);
   } catch (error) {
     formFeedback("order-form-error", error.message);
     if (customer?.register && error.status === 409) void ordersUi.customerPicker?.checkPhone();

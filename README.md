@@ -164,11 +164,13 @@ Os indicadores do cliente usam somente pedidos confirmados e ativos para unidade
 
 ## Gerenciamento de pedidos
 
-Abra **Pedidos** para consultar orçamentos aguardando confirmação, pedidos confirmados e registros cancelados. Pesquise pelo nome do cliente ou pelo número do orçamento ou do pedido. Os filtros e a ordenação usam a data de emissão, confirmação ou cancelamento conforme o estado.
+Abra **Pedidos** para consultar orçamentos aguardando confirmação, pedidos em produção, pedidos entregues e registros cancelados. Pesquise pelo nome do cliente ou pelo número do orçamento ou do pedido. Os filtros e a ordenação usam a data de emissão, confirmação ou cancelamento conforme o estado.
 
 Após negociar pelo WhatsApp, confirme o pedido manualmente. O sistema cria um pedido por orçamento, com numeração própria, e mantém os dados aprovados no orçamento e no PDF original. Informe o prazo previsto e as observações se necessário. Abra **Ver detalhes** para revisar os itens, consultar o histórico das operações ou editar o prazo e as observações de pedidos confirmados.
 
 Para cancelar um orçamento em aberto ou um pedido, abra os detalhes e informe o motivo. O histórico registra a data e o administrador responsável. Os documentos continuam acessíveis e a numeração comercial é preservada. Compartilhar um PDF mantém o estado comercial atual.
+
+Ao confirmar o pedido, o painel exibe **Em produção**. Abra os detalhes e selecione **Marcar como entregue** para registrar a entrega, com data e administrador. A confirmação comercial, sua data original e os indicadores do cliente são preservados. A migração V9 mantém pedidos confirmados anteriores em **Em produção** até o registro da entrega.
 
 A migração Flyway V7 cria as estruturas de pedidos e eventos comerciais. Os orçamentos antigos continuam aguardando confirmação. A configuração atual do Railway atende à migração.
 
