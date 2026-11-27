@@ -261,8 +261,6 @@ input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--brand); 
 .notice > * { min-width: 0; }
 .notice.success { border-color: #cbe4cf; background: #eff9f1; color: #255e37; }
 #catalog-message { margin-bottom: .82rem; }
-.quote-success { margin-bottom: 1rem; }
-.quote-success .text-link { color: #245633; }
 .history-quote-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .4rem; }
 .history-quote-actions .whatsapp-button { min-height: 44px; padding: .45rem .58rem; font-size: .8rem; }
 .history-quote-actions .pdf-action-label { display: none; }
@@ -299,7 +297,7 @@ input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--brand); 
 .dialog-heading { border-bottom: 1px solid var(--line); }
 .dialog-heading h2 { font-size: 1.26rem; letter-spacing: -.025em; }
 .dialog-heading p { margin-top: .25rem; color: var(--muted); font-size: .88rem; }
-.catalog-dialog, .preview-pdf-dialog, .quote-share-dialog, .pwa-guide, .pwa-offline-dialog {
+.catalog-dialog, .preview-pdf-dialog, .quote-share-dialog, .quote-confirmation, .pwa-guide, .pwa-offline-dialog {
   --dialog-gap: .875rem;
   --dialog-width: 650px;
   position: fixed;
@@ -314,14 +312,45 @@ input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--brand); 
   color: var(--ink);
   box-shadow: 0 18px 80px #12121940;
 }
-.keyboard-open :is(.catalog-dialog, .preview-pdf-dialog, .quote-share-dialog, .pwa-guide, .pwa-offline-dialog) {
+.keyboard-open :is(.catalog-dialog, .preview-pdf-dialog, .quote-share-dialog, .quote-confirmation, .pwa-guide, .pwa-offline-dialog) {
   inset-block-start: calc(var(--visual-viewport-top, 0px) + var(--safe-top) + var(--dialog-gap));
   inset-block-end: auto;
   margin-block: 0;
 }
 :is(.catalog-dialog, .preview-pdf-dialog, .quote-share-dialog, .pwa-guide)[open] { display: flex; flex-direction: column; overflow: hidden; }
-.catalog-dialog::backdrop, .preview-pdf-dialog::backdrop, .quote-share-dialog::backdrop { background: #12121988; }
+.catalog-dialog::backdrop, .preview-pdf-dialog::backdrop, .quote-share-dialog::backdrop, .quote-confirmation::backdrop { background: #12121988; }
 .dialog-body { padding: 1rem 1.15rem; }
+.quote-confirmation { --dialog-width: 440px; overflow: auto; overscroll-behavior: contain; }
+.quote-confirmation-body { display: grid; gap: 1rem; }
+.quote-confirmation-heading { display: flex; align-items: flex-start; gap: .72rem; }
+.quote-confirmation-heading h2 { font-size: 1.3rem; }
+.quote-confirmation-heading p { margin-top: .27rem; color: var(--muted); font-size: .9rem; line-height: 1.45; }
+.quote-confirmation-icon {
+  flex: 0 0 40px;
+  display: grid;
+  place-items: center;
+  height: 40px;
+  border-radius: 10px;
+  background: #ecf7ed;
+  color: #24623b;
+}
+.quote-confirmation-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .72rem .85rem;
+  padding: .8rem;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--canvas);
+  overflow-wrap: anywhere;
+}
+.quote-confirmation-details dt { color: var(--muted); font-size: .8rem; }
+.quote-confirmation-details dd { margin-top: .12rem; font-weight: 700; }
+.quote-confirmation-total { grid-column: 1 / -1; padding-top: .65rem; border-top: 1px solid var(--line); }
+.quote-confirmation-total dd { font-size: 1.28rem; }
+.quote-confirmation-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .45rem; }
+.quote-confirmation-actions .button { min-height: 44px; min-width: 0; text-align: center; }
+.quote-confirmation-actions > :is(:first-child, :last-child) { grid-column: 1 / -1; }
 .preview-pdf-dialog { --dialog-width: 960px; }
 .pdf-viewport { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; overflow: auto; }
 .preview-pdf-frame { display: block; flex: 1 1 auto; width: 100%; min-height: 0; height: min(calc(var(--layout-viewport-height) * .62), 740px); border: 0; }
@@ -438,7 +467,7 @@ input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--brand); 
   .button, .nav-link, .check-field, .item-color-check { min-height: 44px; }
   .button, .icon-button { min-width: 44px; }
   .icon-button { width: 44px; height: 44px; }
-  .notice :is(.text-link, .text-button), .quote-success > .text-link { display: inline-flex; align-items: center; min-height: 44px; }
+  .notice :is(.text-link, .text-button) { display: inline-flex; align-items: center; min-height: 44px; }
   .item-color-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 9.5rem), 1fr)); }
   .item-color-option input.item-color-quantity { flex-basis: 4.35rem; width: 4.35rem; height: 44px; font-size: 1rem; }
 }

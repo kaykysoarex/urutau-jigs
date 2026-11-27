@@ -70,7 +70,6 @@
           <div><h1 id="manual-title">Novo orçamento</h1><p>Informe os dados do cliente e selecione as iscas para emitir o orçamento.</p></div>
           <a class="button secondary ai-shortcut" href="#urutau-ai"><svg class="icon"><use href="/icons.svg#sparkles"/></svg>Usar URUTAU AI</a>
         </div>
-        <div id="quote-success" class="notice success quote-success" hidden role="status"></div>
         <div id="manual-layout" class="quote-grid">
           <div class="quote-main">
             <section class="panel" aria-labelledby="client-heading">
@@ -133,7 +132,7 @@
           <aside class="quote-summary panel" aria-labelledby="quote-summary-title">
             <div class="summary-heading">
               <span class="summary-icon"><svg class="icon"><use href="/icons.svg#receipt"/></svg></span>
-              <div><h2 id="quote-summary-title">Resumo do orçamento</h2><p id="summary-state">Em elaboração</p></div>
+              <div><h2 id="quote-summary-title" tabindex="-1">Resumo do orçamento</h2><p id="summary-state">Em elaboração</p></div>
             </div>
             <div class="summary-body" aria-live="polite">
               <dl class="summary-values">
@@ -221,6 +220,31 @@
       </section>
     </main>
   </div>
+
+  <dialog id="quote-success" class="quote-confirmation" aria-labelledby="quote-success-title" aria-describedby="quote-success-message">
+    <div class="dialog-body quote-confirmation-body">
+      <div class="quote-confirmation-heading">
+        <span class="quote-confirmation-icon"><svg class="icon" aria-hidden="true"><use href="/icons.svg#check"/></svg></span>
+        <div>
+          <h2 id="quote-success-title" tabindex="-1" autofocus>Orçamento emitido!</h2>
+          <p id="quote-success-message">Seu orçamento foi gerado com sucesso e está pronto para ser enviado.</p>
+        </div>
+      </div>
+      <dl class="quote-confirmation-details">
+        <div><dt>Número do orçamento</dt><dd id="quote-success-number"></dd></div>
+        <div><dt>Cliente</dt><dd id="quote-success-client"></dd></div>
+        <div><dt>Quantidade total</dt><dd id="quote-success-quantity"></dd></div>
+        <div><dt>Tabela comercial aplicada</dt><dd id="quote-success-tier"></dd></div>
+        <div class="quote-confirmation-total"><dt>Valor total</dt><dd id="quote-success-total"></dd></div>
+      </dl>
+      <div class="quote-confirmation-actions">
+        <button id="quote-success-share" class="button whatsapp-button" type="button" aria-haspopup="dialog"><svg class="icon" aria-hidden="true"><use href="/icons.svg#whatsapp"/></svg>Enviar pelo WhatsApp</button>
+        <a id="quote-success-view" class="button secondary" target="_blank" rel="noopener" aria-haspopup="dialog"><svg class="icon" aria-hidden="true"><use href="/icons.svg#eye"/></svg>Visualizar PDF</a>
+        <a id="quote-success-download" class="button secondary"><svg class="icon" aria-hidden="true"><use href="/icons.svg#download"/></svg>Baixar PDF</a>
+        <button id="quote-success-close" class="button secondary" type="button">Fechar</button>
+      </div>
+    </div>
+  </dialog>
 
   <dialog id="preview-pdf-dialog" class="preview-pdf-dialog" aria-labelledby="preview-pdf-title">
     <div class="dialog-heading">

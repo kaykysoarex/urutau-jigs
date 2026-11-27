@@ -215,13 +215,16 @@ class QuoteIntegrationTest {
         var items = List.of(item(first, 1));
         String token = review(items);
         String response = issue(items, requestId, token).andExpect(status().isCreated())
+                .andExpect(jsonPath("$.priceTier").value("CONSUMIDOR_FINAL"))
                 .andExpect(jsonPath("$.status").value("PENDENTE")).andReturn().getResponse().getContentAsString();
         long number = json.readTree(response).path("number").asLong();
         catalog.updatePrices(new PricesUpdate(List.of(price(first, "88.00", "80.00"))));
+        catalog.updateSettings(new Settings(1));
         var fixture = catalog.list().stream().filter(model -> model.variants().stream().anyMatch(v -> v.id() == first))
                 .findFirst().orElseThrow();
         catalog.update(fixture.id(), new ProductUpdate("Nome atualizado " + number, false, List.of()));
-        issue(items, requestId, token).andExpect(status().isCreated()).andExpect(jsonPath("$.number").value(number));
+        issue(items, requestId, token).andExpect(status().isCreated()).andExpect(jsonPath("$.number").value(number))
+                .andExpect(jsonPath("$.priceTier").value("CONSUMIDOR_FINAL"));
         var document = quoteService.document(number);
         assertThat(document.lines().getFirst().unitPrice()).isEqualByComparingTo("10.00");
         assertThat(document.lines().getFirst().model()).isEqualTo(fixture.name());

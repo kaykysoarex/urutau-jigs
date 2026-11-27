@@ -67,7 +67,7 @@ public final class QuoteDtos {
 
     public record Summary(long number, String clientName, Instant createdAt, int quantity,
                           @JsonFormat(shape = JsonFormat.Shape.STRING) BigDecimal total,
-                          Status status) {}
+                          Status status, PriceTier priceTier) {}
 
     public record ShareDetails(long number, String clientName, String clientPhone) {}
 

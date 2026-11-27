@@ -79,7 +79,7 @@ class CommercialQuote {
     }
 
     Summary summary() {
-        return new Summary(id, clientName, createdAt, totalQuantity, total, status);
+        return new Summary(id, clientName, createdAt, totalQuantity, total, status, priceTier);
     }
 
     ShareDetails shareDetails() {

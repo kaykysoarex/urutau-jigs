@@ -68,7 +68,7 @@ def variant_for_fixture(page):
     return next(item["id"] for item in spinner["variants"] if item["weight"] == 12 and item["color"] == "03")
 
 
-def issue_quote(page, variant_id, client, phone="", check_preview=False):
+def issue_quote(page, variant_id, client, phone="", check_preview=False, keep_confirmation=False):
     choose(page, "Spinner", 12)
     color(page, "03").check()
     page.get_by_label("Quantidade da cor 03", exact=True).fill("2")
@@ -92,7 +92,12 @@ def issue_quote(page, variant_id, client, phone="", check_preview=False):
     response = pending.value
     assert response.status == 201, (response.status, response.text())
     quote = response.json()
-    expect(page.locator("#quote-success")).to_contain_text(f'{quote["number"]:05}')
+    confirmation = page.locator("#quote-success")
+    expect(confirmation).to_be_visible()
+    expect(confirmation).to_contain_text(f'{quote["number"]:05}')
+    if not keep_confirmation:
+        page.locator("#quote-success-close").click()
+        expect(confirmation).not_to_be_visible()
     return quote
 
 
@@ -132,11 +137,11 @@ def assert_responsive(page, dialog):
 
 
 def native_sharing(page, variant_id):
-    quote = issue_quote(page, variant_id, CLIENT, PHONE, check_preview=True)
+    quote = issue_quote(page, variant_id, CLIENT, PHONE, check_preview=True, keep_confirmation=True)
     number = quote["number"]
     assert Decimal(quote["total"]) == Decimal("52.00")
     before = history_record(page, number)
-    trigger = page.locator("#quote-success").get_by_role("button", name=SHARE_LABEL, exact=True)
+    trigger = page.locator("#quote-success-share")
     pdf_url = f"**/api/quotes/{number}/pdf"
     held_requests = []
 
@@ -179,6 +184,7 @@ def native_sharing(page, variant_id):
     }
     if dialog.is_visible():
         close_share(page)
+    page.locator("#quote-success-close").click()
     assert history_record(page, number) == before
 
     page.goto("/#meus-orcamentos")

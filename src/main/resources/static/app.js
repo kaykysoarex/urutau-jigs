@@ -29,6 +29,7 @@ const state = {
   issuedViewer: null,
   quoteShare: null,
   issueBusy: false,
+  issueConfirmation: null,
   quoteAttempt: null,
   historyRevision: 0,
   catalogModel: null,
@@ -48,6 +49,7 @@ const dateFormat = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeZo
 const currentDateFormat = new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "long", year: "numeric", timeZone: "America/Sao_Paulo" });
 const unitLabel = value => `${numberFormat.format(value)} ${value === 1 ? "unidade" : "unidades"}`;
 const quoteNumber = value => String(value).padStart(5, "0");
+const priceTierLabel = tier => tier === "LOJISTA" ? "Lojista" : tier === "CONSUMIDOR_FINAL" ? "Consumidor final" : "A definir";
 const keyForVariant = ({ weight, color }) => `${weight}/${color}`;
 const activeProducts = () => (state.catalog ?? []).filter(product => product.active && product.variants.some(variant => variant.active));
 const maxItemQuantity = 100000;
@@ -149,11 +151,7 @@ function pdfLink(number, download, symbolOnly = false) {
     anchor.target = "_blank";
     anchor.rel = "noopener";
     anchor.setAttribute("aria-haspopup", "dialog");
-    anchor.addEventListener("click", event => {
-      if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
-      event.preventDefault();
-      void showIssuedPdf(number);
-    });
+    anchor.addEventListener("click", event => viewIssuedPdf(event, number));
   }
   if (symbolOnly) {
     const actionText = element("span", "pdf-action-label", label);
@@ -163,6 +161,12 @@ function pdfLink(number, download, symbolOnly = false) {
     anchor.setAttribute("aria-label", `${label} do orçamento ${quoteNumber(number)}`);
   }
   return anchor;
+}
+
+function viewIssuedPdf(event, number) {
+  if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
+  void showIssuedPdf(number);
 }
 
 function quoteShareButton(number, clientName) {
@@ -301,6 +305,7 @@ function navigate() {
     for (const id of ["quote-share-dialog", "issued-pdf-dialog"]) {
       if (byId(id).open) byId(id).close();
     }
+    closeQuoteConfirmation(false);
   }
   document.title = `${route.title} | Urutau Jigs`;
   byId("breadcrumb-group").textContent = route.group;
@@ -507,7 +512,6 @@ function editItem(id) {
 }
 
 function draftChanged() {
-  byId("quote-success").hidden = true;
   window.urutauPwa?.renderUpdate();
   void updatePreview();
 }
@@ -631,7 +635,7 @@ function renderSummary() {
   const threshold = estimate?.wholesaleThreshold ?? state.threshold;
   const wholesale = estimate?.priceTier === "LOJISTA";
   const remaining = estimate?.remainingForWholesale ?? Math.max(0, threshold - quantity);
-  const tier = estimate?.priceTier ? wholesale ? "Lojista" : "Consumidor final" : "A definir";
+  const tier = priceTierLabel(estimate?.priceTier);
   byId("summary-quantity").textContent = unitLabel(quantity);
   byId("summary-tier").replaceChildren(element("span", `tier-pill${wholesale ? " wholesale" : ""}`, tier));
   byId("summary-state").textContent = state.previewLoading ? "Calculando valores…" : "Em elaboração";
@@ -654,7 +658,7 @@ function renderSummary() {
   }
   byId("quote-preview-pdf").disabled = state.issueBusy || state.draft.length === 0;
   const issue = byId("quote-issue");
-  issue.disabled = state.issueBusy || !estimate || !quantity || missingPrices();
+  issue.disabled = state.issueBusy || Boolean(state.issueConfirmation) || !estimate || !quantity || missingPrices();
   issue.querySelector("span").textContent = state.issueBusy ? "Emitindo…" : "Emitir orçamento";
 }
 
@@ -934,7 +938,7 @@ function setQuoteBusy(busy) {
 }
 
 async function issueQuote() {
-  if (state.issueBusy || !state.preview || missingPrices()) return;
+  if (state.issueBusy || state.issueConfirmation || !state.preview || missingPrices()) return;
   const form = byId("client-form");
   const name = byId("client-name");
   name.value = name.value.trim();
@@ -946,25 +950,13 @@ async function issueQuote() {
     state.quoteAttempt = { fingerprint, id: generateRequestId() };
   }
   body.requestId = state.quoteAttempt.id;
+  const origin = quoteScreenPosition();
   setQuoteBusy(true);
+  let issued;
   try {
-    const issued = await api("/api/quotes", { method: "POST", body });
+    issued = await api("/api/quotes", { method: "POST", body });
+    if (!issued?.number) throw new RequestError(0, "O servidor não confirmou a emissão. Tente novamente.");
     state.quoteAttempt = null;
-    state.draft = [];
-    state.preview = null;
-    form.reset();
-    resetItemEditor();
-    const notice = byId("quote-success");
-    notice.replaceChildren(
-      icon("check"),
-      element("strong", "", `Orçamento nº ${quoteNumber(issued.number)} emitido.`),
-      pdfLink(issued.number, false),
-      pdfLink(issued.number, true),
-      quoteShareButton(issued.number, issued.clientName)
-    );
-    notice.hidden = false;
-    if (state.route?.page !== "manual") toast(`Orçamento nº ${quoteNumber(issued.number)} emitido.`);
-    if (state.route?.page === "history") void loadHistory(0);
   } catch (error) {
     toast(error.message);
     if (error.status === 409 || error.status === 422 || error.status === 400) {
@@ -973,6 +965,51 @@ async function issueQuote() {
     }
   } finally {
     setQuoteBusy(false);
+  }
+  if (issued?.number) {
+    showQuoteConfirmation(issued, origin);
+    if (state.route?.page === "history") void loadHistory(0);
+  }
+}
+
+function quoteScreenPosition() {
+  return { x: window.scrollX, y: window.scrollY, focus: document.activeElement, page: state.route?.page };
+}
+
+function showQuoteConfirmation(quote, origin) {
+  const position = origin.page === state.route?.page ? origin : quoteScreenPosition();
+  const confirmation = { quote, ...position };
+  state.issueConfirmation = confirmation;
+  byId("quote-issue").disabled = true;
+  byId("quote-success-number").textContent = quoteNumber(quote.number);
+  byId("quote-success-client").textContent = quote.clientName;
+  byId("quote-success-quantity").textContent = unitLabel(quote.quantity);
+  byId("quote-success-tier").textContent = priceTierLabel(quote.priceTier);
+  byId("quote-success-total").textContent = moneyFormat.format(quote.total);
+  byId("quote-success-view").href = issuedPdfPath(quote.number);
+  byId("quote-success-download").href = issuedPdfPath(quote.number, true);
+  const dialog = byId("quote-success");
+  dialog.showModal();
+  byId("quote-success-title").focus({ preventScroll: true });
+  dialog.scrollTop = 0;
+  window.scrollTo(confirmation.x, confirmation.y);
+}
+
+function closeQuoteConfirmation(restorePosition = true) {
+  const confirmation = state.issueConfirmation;
+  if (!confirmation) return;
+  state.issueConfirmation = null;
+  byId("quote-success").close();
+  state.draft = [];
+  byId("client-form").reset();
+  resetItemEditor();
+  void updatePreview();
+  if (restorePosition) {
+    const active = confirmation.focus;
+    const focus = state.route?.page === "manual" ? byId("quote-summary-title")
+      : active?.isConnected && active !== document.body && !active.disabled ? active : byId("main");
+    focus.focus({ preventScroll: true });
+    window.scrollTo(confirmation.x, confirmation.y);
   }
 }
 
@@ -1462,7 +1499,6 @@ function reviewConversation() {
   if (state.draft.length && !window.confirm("Substituir os itens do orçamento atual pelos itens da conversa? Os dados do cliente serão mantidos.")) return;
   state.draft = state.conversation.items.map(item => ({ ...item }));
   resetItemEditor();
-  byId("quote-success").hidden = true;
   location.hash = "novo-orcamento";
   toast("Itens enviados para revisão no orçamento.");
 }
@@ -1539,6 +1575,25 @@ function bindEvents() {
   byId("quote-share-native").addEventListener("click", () => void shareQuoteNatively());
   byId("quote-share-retry").addEventListener("click", () => {
     if (state.quoteShare) void prepareQuoteShare(state.quoteShare);
+  });
+  byId("quote-success-close").addEventListener("click", () => closeQuoteConfirmation());
+  byId("quote-success").addEventListener("cancel", event => {
+    event.preventDefault();
+    closeQuoteConfirmation();
+  });
+  byId("quote-success-share").addEventListener("click", event => {
+    const quote = state.issueConfirmation?.quote;
+    if (quote) {
+      event.currentTarget.focus({ preventScroll: true });
+      openQuoteShare(quote.number, quote.clientName);
+    }
+  });
+  byId("quote-success-view").addEventListener("click", event => {
+    const quote = state.issueConfirmation?.quote;
+    if (quote) {
+      event.currentTarget.focus({ preventScroll: true });
+      viewIssuedPdf(event, quote.number);
+    }
   });
   byId("quote-issue").addEventListener("click", () => void issueQuote());
   byId("catalog-search").addEventListener("input", renderCatalog);
