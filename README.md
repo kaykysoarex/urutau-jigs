@@ -23,12 +23,12 @@ O JAR distribuído requer Java 21. Para compilar o código-fonte, instale també
            [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2], 'Process')
        }
    }
-   java -jar ..\urutau-jigs-0.1.10.jar
+   java -jar ..\urutau-jigs-0.2.0.jar
    ```
 
 3. Abra [o painel local](http://127.0.0.1:8080/) e entre com uma das contas. Confira os valores em **Tabela de preços**. Os preços iniciais do catálogo oficial são cadastrados pelo Flyway. O H2 guarda os registros em `data/` da pasta onde a aplicação foi iniciada.
 
-Use `mvn spring-boot:run` para executar pelo código-fonte. Use `mvn clean verify` para executar os testes e gerar o JAR em `target/urutau-jigs-0.1.10.jar`. Em Linux, exporte as mesmas variáveis no ambiente do processo e execute o JAR com Java 21.
+Use `mvn spring-boot:run` para executar pelo código-fonte. Use `mvn clean verify` para executar os testes e gerar o JAR em `target/urutau-jigs-0.2.0.jar`. Em Linux, exporte as mesmas variáveis no ambiente do processo e execute o JAR com Java 21.
 
 ## Instalar o URUTAU JIGS como aplicativo
 
@@ -152,6 +152,16 @@ Após a confirmação da emissão pelo servidor, o modal **Orçamento emitido!**
 
 O sistema compartilha somente PDFs emitidos e protegidos pelo login. O compartilhamento conserva a numeração, os valores e o status do orçamento. Ele dispensa serviços externos de automação, chaves adicionais e mudanças na configuração do Railway.
 
+## Gerenciamento de pedidos
+
+Abra **Pedidos** para consultar orçamentos aguardando confirmação, pedidos confirmados e registros cancelados. Pesquise pelo nome do cliente ou pelo número do orçamento ou do pedido. Os filtros e a ordenação usam a data de emissão, confirmação ou cancelamento conforme o estado.
+
+Após negociar pelo WhatsApp, confirme o pedido manualmente. O sistema cria um pedido por orçamento, com numeração própria, e mantém os dados aprovados no orçamento e no PDF original. Informe o prazo previsto e as observações se necessário. Abra **Ver detalhes** para revisar os itens, consultar o histórico das operações ou editar o prazo e as observações de pedidos confirmados.
+
+Para cancelar um orçamento em aberto ou um pedido, abra os detalhes e informe o motivo. O histórico registra a data e o administrador responsável. Os documentos continuam acessíveis e a numeração comercial é preservada. Compartilhar um PDF mantém o estado comercial atual.
+
+A migração Flyway V7 cria as estruturas de pedidos e eventos comerciais. Os orçamentos antigos continuam aguardando confirmação. A configuração atual do Railway atende à migração.
+
 ## URUTAU AI
 
 Cole o pedido completo do catálogo oficial, incluindo o cabeçalho e o total, ou somente as linhas do pedido. O back-end lê o formato `• Jig Peixinho | 12g | Cor 05 | Qtd: 5`, valida as combinações ativas no banco, soma os itens e compara com o total declarado, quando presente. Um pedido estruturado e validado funciona mesmo sem uma chave de IA. As quantidades reconhecidas aparecem para revisão no mesmo formulário de orçamento. [Formato gerado pelo catálogo oficial](https://catalogo-urutau.vercel.app/script.js)
@@ -169,7 +179,7 @@ O provedor de IA interpreta mensagens livres e ajuda a esclarecer trechos ambíg
    GEMINI_MODEL=gemini-3.5-flash-lite
    ```
 
-3. Pare a execução anterior. Na mesma pasta `urutau-jigs`, recarregue o `.env` com o trecho de PowerShell da seção de instalação e execute `java -jar ..\urutau-jigs-0.1.10.jar`. A mesma pasta de trabalho mantém o acesso a `data/urutau.mv.db` quando o H2 padrão estiver em uso. Abra **URUTAU AI** e envie um pedido de teste como `3 Spinner 12g cor 03`.
+3. Pare a execução anterior. Na mesma pasta `urutau-jigs`, recarregue o `.env` com o trecho de PowerShell da seção de instalação e execute `java -jar ..\urutau-jigs-0.2.0.jar`. A mesma pasta de trabalho mantém o acesso a `data/urutau.mv.db` quando o H2 padrão estiver em uso. Abra **URUTAU AI** e envie um pedido de teste como `3 Spinner 12g cor 03`.
 
 O modelo padrão, inclusive com `GEMINI_MODEL` em branco, é o Gemini 3.5 Flash-Lite estável. O back-end usa a operação oficial `generateContent` com Structured Outputs. Os limites de uso dependem do projeto no Google. Se a cota acabar ou o serviço falhar, a interface informa o erro e o gerador manual continua disponível. [Modelo e modalidade gratuita](https://aistudio.google.com/docs/models/gemini-3.5-flash-lite#pricing) · [Limites de uso](https://aistudio.google.com/docs/rate-limits)
 
@@ -207,12 +217,13 @@ Os testes de navegador executam o JAR gerado por `mvn clean verify` com um H2 de
 ```powershell
 python -m pip install -r src/test/browser/requirements.txt
 python -m playwright install chromium
-python src/test/browser/test_bulk_colors.py target/urutau-jigs-0.1.10.jar
-python src/test/browser/test_whatsapp_share.py target/urutau-jigs-0.1.10.jar
-python src/test/browser/test_pwa.py target/urutau-jigs-0.1.10.jar
-python src/test/browser/test_mobile_layout.py target/urutau-jigs-0.1.10.jar --output target/auditoria-mobile
-python src/test/browser/test_quote_confirmation.py target/urutau-jigs-0.1.10.jar
-python src/test/browser/test_quote_drafts.py target/urutau-jigs-0.1.10.jar
+python src/test/browser/test_bulk_colors.py target/urutau-jigs-0.2.0.jar
+python src/test/browser/test_whatsapp_share.py target/urutau-jigs-0.2.0.jar
+python src/test/browser/test_pwa.py target/urutau-jigs-0.2.0.jar
+python src/test/browser/test_mobile_layout.py target/urutau-jigs-0.2.0.jar --output target/auditoria-mobile
+python src/test/browser/test_quote_confirmation.py target/urutau-jigs-0.2.0.jar
+python src/test/browser/test_quote_drafts.py target/urutau-jigs-0.2.0.jar
+python src/test/browser/test_orders.py target/urutau-jigs-0.2.0.jar
 ```
 
 Se já tiver Chrome ou Edge instalado, use `--channel chrome` ou `--channel msedge` nos comandos de teste e dispense a instalação do Chromium pelo Playwright.
