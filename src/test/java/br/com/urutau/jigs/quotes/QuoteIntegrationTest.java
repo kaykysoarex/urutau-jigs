@@ -183,7 +183,8 @@ class QuoteIntegrationTest {
                 .andReturn().getResponse().getContentAsByteArray();
         try (var document = Loader.loadPDF(pdf)) {
             assertThat(new PDFTextStripper().getText(document))
-                    .contains("PRÉVIA — SEM VALIDADE COMERCIAL", "A definir", "Goiânia", "7,00", "140,00")
+                    .contains("PRÉVIA — SEM VALIDADE COMERCIAL", "A definir", "7,00", "140,00")
+                    .doesNotContain("Goiânia", "Cidade / UF")
                     .doesNotContain("Nº " + String.format(java.util.Locale.ROOT, "%05d", number));
         }
         previewPdf(Map.of("items", partial), true).andExpect(status().isOk())

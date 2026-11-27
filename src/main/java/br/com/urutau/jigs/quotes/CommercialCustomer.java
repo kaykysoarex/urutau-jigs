@@ -48,8 +48,7 @@ class CommercialCustomer {
         phone = client.phone();
         normalizedPhone = normalized;
         email = CustomerService.optional(details.email());
-        city = client.city();
-        state = client.state();
+
         notes = CustomerService.optional(details.notes());
         updatedAt = now;
     }

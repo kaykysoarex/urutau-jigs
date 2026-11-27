@@ -69,7 +69,7 @@ class QuoteDraftService {
     Listed save(UUID id, String owner, Save request) {
         String key = id.toString();
         var content = new Content(QuoteService.clean(request.content().client()), request.content().items(),
-                request.content().notes(), request.content().editor(), request.content().pendingAi(), request.content().customer());
+                request.content().notes(), request.content().editor(), request.content().pendingAi(), request.content().customer(), request.content().source());
         if (content.customer() != null && customers.snapshot(content.customer().id()).version() < content.customer().version()) {
             throw invalid("O vínculo do cliente no rascunho é inválido.");
         }
@@ -102,7 +102,7 @@ class QuoteDraftService {
         var stored = content(draft);
         var incoming = request.content();
         if (stored.equals(new Content(QuoteService.clean(incoming.client()), incoming.items(), incoming.notes(),
-                incoming.editor(), incoming.pendingAi(), incoming.customer()))) {
+                incoming.editor(), incoming.pendingAi(), incoming.customer(), incoming.source()))) {
             return summary(draft, stored);
         }
         draft.requireVersion(request.version());
@@ -183,7 +183,7 @@ class QuoteDraftService {
         return new Listed(UUID.fromString(draft.id), draft.version, content.client().name(),
                 items.stream().mapToInt(ItemInput::quantity).sum(),
                 (int) items.stream().mapToLong(ItemInput::variantId).distinct().count(),
-                draft.estimatedTotal, draft.updatedAt);
+                draft.estimatedTotal, draft.updatedAt, content.source());
     }
 
     static ResponseStatusException notFound() {

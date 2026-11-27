@@ -94,6 +94,9 @@ class CustomerIntegrationTest {
         assertThat(inlineDetail.get("customerId").asLong()).isPositive();
         long id = create("Nome do Cadastro", "").get("id").asLong();
         long number = issue("Nome Histórico no PDF", null);
+        assertThat(jdbc.queryForObject("select client_city from commercial_quote where id = ?", String.class, number)).isNull();
+        jdbc.update("update commercial_quote set client_city = ?, client_state = ? where id = ?", "Curitiba", "PR", number);
+        jdbc.update("update commercial_customer set city = ?, state = ? where id = ?", "Curitiba", "PR", id);
         String order = "/api/orders/" + number;
         submit(put(order + "/customer"), new CustomerDtos.Selection(id, false, false))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.events[0].action").value("VINCULO"));
@@ -119,10 +122,11 @@ class CustomerIntegrationTest {
                 .andExpect(jsonPath("$.content[0].status").value("CANCELADO"))
                 .andExpect(jsonPath("$.content[1].fulfillment").value("ENTREGUE"));
         submit(put(customer), new CustomerDtos.Change(0L, input("Nome Atualizado", "", false))).andExpect(status().isOk());
+        assertThat(jdbc.queryForObject("select city from commercial_customer where id = ?", String.class, id)).isEqualTo("Curitiba");
         byte[] pdf = mvc.perform(get("/api/quotes/" + number + "/pdf").with(user("first").roles("ADMIN")))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray();
         try (var document = Loader.loadPDF(pdf)) {
-            assertThat(new PDFTextStripper().getText(document)).contains("Nome Histórico no PDF").doesNotContain("Nome Atualizado");
+            assertThat(new PDFTextStripper().getText(document)).contains("Nome Histórico no PDF", "Curitiba").doesNotContain("Nome Atualizado");
         }
     }
 

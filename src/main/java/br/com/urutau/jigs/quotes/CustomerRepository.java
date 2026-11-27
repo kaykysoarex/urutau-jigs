@@ -26,8 +26,6 @@ interface CustomerRepository extends JpaRepository<CommercialCustomer, Long> {
         where (:active is null or c.active = :active)
           and (:search = '' or locate(lower(:search), lower(c.name)) > 0
             or locate(lower(:search), lower(c.establishment)) > 0
-            or locate(lower(:search), lower(c.city)) > 0
-            or locate(lower(:search), lower(c.state)) > 0
             or (:digits <> '' and locate(:digits, c.normalizedPhone) > 0)
             or (:phone <> '' and c.normalizedPhone = :phone))
         order by c.active desc, c.name asc, c.id asc

@@ -130,7 +130,6 @@ function renderOrderDialog(mode) {
   if (mode === "detail") {
     if (record.orderNumber != null) facts.unshift(["Pedido", quoteNumber(record.orderNumber)]);
     if (customer.phone) facts.push(["Telefone", customer.phone]);
-    if (customer.city || customer.state) facts.push(["Cidade / UF", [customer.city, customer.state].filter(Boolean).join(" – ")]);
     if (data.confirmedAt) facts.push(["Confirmação", orderDate(data.confirmedAt)], ["Confirmado por", data.confirmedBy],
       ["Prazo previsto", orderCalendar(data.expectedOn)], ["Observações", data.notes || "—"]);
     if (record.deliveredAt) facts.push(["Entrega", orderDate(record.deliveredAt)], ["Entregue por", data.deliveredBy]);

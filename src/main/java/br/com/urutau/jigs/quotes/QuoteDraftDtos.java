@@ -31,12 +31,22 @@ final class QuoteDraftDtos {
         }
     }
 
+    enum Source { MANUAL, IA }
+
     record Content(@NotNull @Valid QuoteDtos.Client client,
                    @NotNull @Size(max = QuoteDtos.MAX_ITEMS) List<@NotNull @Valid ItemInput> items,
                    @NotNull @Size(max = 1000) String notes,
                    @NotNull @Valid Editor editor,
                    @NotNull @Size(max = QuoteDtos.MAX_ITEMS) List<@NotNull @Valid ItemInput> pendingAi,
-                   @Valid CustomerDtos.Ref customer) {
+                   @Valid CustomerDtos.Ref customer, Source source) {
+        Content {
+            if (source == null) source = pendingAi != null && !pendingAi.isEmpty() ? Source.IA : Source.MANUAL;
+        }
+
+        Content(QuoteDtos.Client client, List<ItemInput> items, String notes, Editor editor, List<ItemInput> pendingAi,
+                CustomerDtos.Ref customer) {
+            this(client, items, notes, editor, pendingAi, customer, null);
+        }
         Content(QuoteDtos.Client client, List<ItemInput> items, String notes, Editor editor, List<ItemInput> pendingAi) {
             this(client, items, notes, editor, pendingAi, null);
         }
@@ -51,7 +61,7 @@ final class QuoteDraftDtos {
     record Save(@PositiveOrZero Long version, @NotNull @Valid Content content) {}
 
     record Listed(UUID id, long version, String clientName, int quantity, int combinations,
-                  @JsonFormat(shape = JsonFormat.Shape.STRING) BigDecimal estimatedTotal, Instant updatedAt) {}
+                  @JsonFormat(shape = JsonFormat.Shape.STRING) BigDecimal estimatedTotal, Instant updatedAt, Source source) {}
 
     record Variant(long variantId, String model, int weight, String color, boolean active) {}
 

@@ -33,8 +33,8 @@ def fill_customer(page, name, phone):
     editor.get_by_label("Nome ou razão social").fill(name)
     editor.get_by_label("Estabelecimento").fill("Loja de pesca QA")
     editor.get_by_label("Telefone ou WhatsApp").fill(phone)
-    editor.get_by_label("Cidade").fill("Curitiba")
-    editor.get_by_label("Estado").select_option("PR")
+    expect(editor.get_by_label("Cidade")).to_have_count(0)
+    expect(editor.get_by_label("Estado")).to_have_count(0)
 
 
 def current_card(page, name):
@@ -167,10 +167,10 @@ def check_pagination(page):
     headers = {session["csrfHeader"]: session["csrfToken"]}
     for index in range(17):
         response = page.request.post("/api/customers", headers=headers,
-                                     data={"name": f"Paginação QA {index:02}", "city": "Itajaí", "state": "SC"})
+                                     data={"name": f"Paginação QA {index:02}", "establishment": "Grupo Paginação"})
         assert response.ok
     route(page, "clientes")
-    page.locator("#customer-search").fill("Itajaí")
+    page.locator("#customer-search").fill("Grupo Paginação")
     expect(page.locator("#customers-list .order-card").first).to_contain_text("Paginação QA")
     expect(page.locator("#customers-list .order-card")).to_have_count(16)
     page.locator("#customers-pages").get_by_role("button", name="Próxima página").click()

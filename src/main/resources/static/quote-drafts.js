@@ -5,14 +5,14 @@ const draftDate = new Intl.DateTimeFormat("pt-BR", {
   dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo"
 });
 const draftApiPath = "/api/quote-drafts";
-const draftUi = { entries: [], current: null, busy: false, listRevision: 0, unavailableEditor: null, pendingAi: [] };
+const draftUi = { source: "MANUAL", parked: new Map(), switching: false, legacyLocation: {}, entries: [], current: null, busy: false, listRevision: 0, unavailableEditor: null, pendingAi: [] };
 
 function draftContent() {
   const editor = draftUi.unavailableEditor;
   const colors = new Map(editor?.colors.map(({ variantId, quantity }) => [variantId, quantity]));
   for (const [id, quantity] of state.selectedColors) colors.set(id, quantity);
   return {
-    client: readQuoteClient(byId("client-form")),
+    client: { ...readQuoteClient(byId("client-form")), ...draftUi.legacyLocation },
     items: draftItems(),
     notes: byId("draft-notes").value,
     editor: {
@@ -24,7 +24,8 @@ function draftContent() {
       colors: [...colors].map(([variantId, quantity]) => ({ variantId, quantity: draftEditorAmount(quantity) }))
     },
     pendingAi: draftUi.pendingAi.map(({ variantId, quantity }) => ({ variantId, quantity })),
-    customer: quoteCustomer.ref
+    customer: quoteCustomer.ref,
+    source: draftUi.source
   };
 }
 
@@ -68,7 +69,9 @@ function updateDraftStatus() {
   byId("draft-retry").hidden = !dirty || Boolean(draft.conflict || draft.saving || (!draft.error && !offline));
   byId("draft-conflict").hidden = !draft?.conflict;
   byId("draft-loss-warning").hidden = !dirty || (!offline && !draft.error && !draft.conflict);
-  byId("draft-ai-review").hidden = !draftUi.pendingAi.length;
+  byId("draft-ai-review").hidden = draftUi.source !== "IA" || !draftUi.pendingAi.length;
+  byId("draft-transfer").hidden = !draft || hasUnreviewedInterpretation();
+  byId("draft-transfer").textContent = draftUi.source === "IA" ? "Transferir para manual" : "Transferir para IA";
   byId("draft-editor-clear").hidden = !draftUi.unavailableEditor;
   window.urutauPwa?.renderUpdate();
 }
@@ -158,6 +161,7 @@ function renderDraftList() {
     const date = element("time", "", draftDate.format(new Date(draft.updatedAt)));
     date.dateTime = draft.updatedAt;
     description.append(element("strong", "", draft.clientName || "Cliente não informado"),
+      element("small", "", draft.source === "IA" ? "Com IA" : "Manual"),
       element("small", "", `${unitLabel(draft.quantity)} · ${draft.combinations} ${draft.combinations === 1 ? "combinação" : "combinações"}${total}`), date);
     const actions = element("div", "draft-actions");
     for (const [label, action, handler] of [
@@ -226,10 +230,12 @@ function clearDraftEditor() {
 function resetDraftWorkspace() {
   clearTimeout(draftUi.current?.timer);
   draftUi.current = null;
+  draftUi.legacyLocation = {};
   draftUi.pendingAi = [];
   state.draft = [];
   state.quoteAttempt = null;
   byId("client-form").reset();
+  byId("draft-notes").value = "";
   clearQuoteCustomer();
   formFeedback("draft-restore-notice", "");
   resetItemEditor();
@@ -241,12 +247,14 @@ function hydrateDraft(opened) {
   const { summary, content, variants, estimateChanged, editorUnavailable } = opened;
   const { editor } = content;
   resetDraftWorkspace();
+  draftUi.source = content.source ?? "MANUAL";
+  draftUi.legacyLocation = { city: content.client.city ?? null, state: content.client.state ?? null };
   const catalog = new Map(variants.map(variant => [variant.variantId, variant]));
   const details = items => items.map(item => ({ ...catalog.get(item.variantId), ...item }));
   state.draft = details(content.items);
   draftUi.pendingAi = details(content.pendingAi);
-  for (const [name, value] of Object.entries(content.client)) {
-    byId("client-form").elements.namedItem(name).value = value ?? "";
+  for (const name of ["name", "phone"]) {
+    byId("client-form").elements.namedItem(name).value = content.client[name] ?? "";
   }
   byId("draft-notes").value = content.notes;
   restoreQuoteCustomer(content.customer, opened.customer);
@@ -284,9 +292,55 @@ function openDraft(id, ignoreConflict = false) {
     if (snapshot !== JSON.stringify(draftContent())) {
       throw new Error("O orçamento atual mudou durante a recuperação. Tente abrir o rascunho novamente.");
     }
+
+    if (draftUi.current?.id && draftUi.source !== opened.content.source) draftUi.parked.set(draftUi.source, draftUi.current.id);
+    if (opened.content.source === "IA" && draftUi.current?.id !== id) clearOrderConversation();
     hydrateDraft(opened);
-    byId("client-name").focus({ preventScroll: true });
+    const destination = quoteModeHash(draftUi.source);
+    if (location.hash !== destination) location.hash = destination;
+    else byId("client-name").focus({ preventScroll: true });
   });
+}
+
+function quoteModeHash(source) {
+  return source === "IA" ? "#novo-orcamento-ia" : "#novo-orcamento";
+}
+
+async function switchQuoteWorkspace(source) {
+  if (draftUi.source === source) return true;
+  if (draftUi.switching || draftUi.busy || state.issueBusy || state.aiBusy) return false;
+  draftUi.switching = true;
+  try {
+    if (!await flushDraft()) {
+      toast("Sincronize o rascunho para trocar de gerador.");
+      return false;
+    }
+    const openedId = draftUi.parked.get(source);
+    let opened = null;
+    if (openedId) {
+      try {
+        opened = await api(`${draftApiPath}/${openedId}`);
+        await loadCatalog();
+      } catch (error) {
+        if (error.status !== 404) throw error;
+        draftUi.parked.delete(source);
+      }
+    }
+    if (!await flushDraft()) return false;
+    if (draftUi.current?.id) draftUi.parked.set(draftUi.source, draftUi.current.id);
+    if (opened?.content.source === source) hydrateDraft(opened);
+    else {
+      draftUi.source = source;
+      resetDraftWorkspace();
+    }
+    updateDraftStatus();
+    return true;
+  } catch (error) {
+    toast(error.message);
+    return false;
+  } finally {
+    draftUi.switching = false;
+  }
 }
 
 function discardDraft(entry) {
@@ -323,6 +377,7 @@ function discardDraft(entry) {
 }
 
 function bindDraftEvents() {
+  byId("draft-notes").addEventListener("input", queueDraftSave);
   for (const type of ["input", "change"]) {
     byId("client-form").addEventListener(type, queueDraftSave);
     byId("item-form").addEventListener(type, queueDraftSave);
@@ -330,6 +385,18 @@ function bindDraftEvents() {
   for (const id of ["item-select-all", "item-clear-all", "item-apply-quantity", "item-cancel"]) {
     byId(id).addEventListener("click", queueDraftSave);
   }
+  byId("draft-transfer").addEventListener("click", () => void withDraftAction(async () => {
+    if (!draftUi.current || hasUnreviewedInterpretation() || !window.confirm("Transferir este rascunho para o outro gerador?")) return;
+    const original = draftUi.source;
+    draftUi.source = original === "IA" ? "MANUAL" : "IA";
+    if (!await flushDraft()) {
+      draftUi.source = original;
+      return;
+    }
+    draftUi.parked.delete(original);
+    clearOrderConversation();
+    location.hash = quoteModeHash(draftUi.source);
+  }));
   byId("draft-new").addEventListener("click", () => void withDraftAction(async () => {
     if (draftUi.current?.conflict) {
       if (!window.confirm("Iniciar outro orçamento e descartar as alterações abertas neste dispositivo?")) return;
@@ -337,6 +404,7 @@ function bindDraftEvents() {
       return;
     }
     resetDraftWorkspace();
+    if (draftUi.source === "IA") clearOrderConversation();
     byId("client-name").focus({ preventScroll: true });
   }));
   byId("draft-list-toggle").addEventListener("toggle", event => { byId("draft-list").hidden = !event.currentTarget.open; });

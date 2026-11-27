@@ -2,11 +2,12 @@
 
 const byId = id => document.getElementById(id);
 const routes = {
-  "novo-orcamento": { page: "manual", title: "Novo orçamento", group: "Orçamentos" },
-  "urutau-ai": { page: "ai", title: "URUTAU AI", group: "Orçamentos" },
-  clientes: { page: "customers", title: "Clientes", group: "Orçamentos" },
-  pedidos: { page: "orders", title: "Pedidos", group: "Orçamentos" },
-  "meus-orcamentos": { page: "history", title: "Meus orçamentos", group: "Orçamentos" },
+  "visao-geral": { page: "overview", title: "Visão geral", group: "Comercial" },
+  "novo-orcamento": { page: "manual", title: "Novo orçamento manual", group: "Comercial" },
+  "novo-orcamento-ia": { page: "ai", title: "Novo orçamento com IA", group: "Comercial" },
+  clientes: { page: "customers", title: "Clientes", group: "Comercial" },
+  pedidos: { page: "orders", title: "Pedidos", group: "Comercial" },
+  "meus-orcamentos": { page: "history", title: "Histórico de orçamentos", group: "Comercial" },
   catalogo: { page: "catalog", title: "Catálogo de iscas", group: "Administração" },
   precos: { page: "prices", title: "Tabela de preços", group: "Administração" },
   configuracoes: { page: "settings", title: "Configurações", group: "Administração" }
@@ -297,12 +298,42 @@ function drawerKeydown(event) {
   }
 }
 
-function navigate() {
-  const route = routes[location.hash.slice(1)] ?? routes["novo-orcamento"];
+function quotePage(page) {
+  return page === "manual" || page === "ai";
+}
+
+function mountQuoteWorkspace(page) {
+  const layout = byId("manual-layout");
+  const host = byId(page === "ai" ? "ai-workspace" : "manual-workspace");
+  if (layout.parentElement !== host) host.append(layout);
+  const interpretation = byId("quote-interpretation");
+  interpretation.hidden = page !== "ai";
+  if (page === "ai" && byId("ai-interpreter").parentElement !== interpretation) {
+    interpretation.append(byId("ai-interpreter"));
+  } else if (page === "manual" && byId("ai-interpreter").parentElement !== byId("page-ai")) {
+    byId("page-ai").append(byId("ai-interpreter"));
+  }
+}
+
+async function navigate() {
+  const requestedHash = location.hash;
+  const hash = requestedHash === "#urutau-ai" ? "#novo-orcamento-ia" : requestedHash;
+  const route = routes[hash.slice(1)] ?? routes["novo-orcamento"];
+  if (quotePage(route.page)) {
+    const source = route.page === "ai" ? "IA" : "MANUAL";
+    if (!state.session) draftUi.source = source;
+    else if (draftUi.source !== source && !await switchQuoteWorkspace(source)) {
+      if (location.hash === requestedHash) history.replaceState(null, "", state.routeHash || quoteModeHash(draftUi.source));
+      return;
+    }
+    if (location.hash !== requestedHash) return void navigate();
+    mountQuoteWorkspace(route.page);
+  }
+  state.routeHash = hash;
   const pageChanged = state.route?.page !== route.page;
   state.route = route;
   const previewDialog = byId("preview-pdf-dialog");
-  if (route.page !== "manual" && previewDialog.open) previewDialog.close();
+  if (!quotePage(route.page) && previewDialog.open) previewDialog.close();
   if (pageChanged) {
     for (const id of ["quote-share-dialog", "issued-pdf-dialog"]) {
       if (byId(id).open) byId(id).close();
@@ -312,6 +343,8 @@ function navigate() {
   document.title = `${route.title} | Urutau Jigs`;
   byId("breadcrumb-group").textContent = route.group;
   byId("breadcrumb-page").textContent = route.title;
+  updateAssistantContext();
+  positionAssistant();
   document.querySelectorAll("[data-view]").forEach(node => { node.hidden = node.dataset.view !== route.page; });
   document.querySelectorAll("[data-page]").forEach(node => {
     if (node.dataset.page === route.page) node.setAttribute("aria-current", "page");
@@ -323,7 +356,7 @@ function navigate() {
     byId("main").focus({ preventScroll: true });
   }
   if (!state.session) return;
-  if (route.page === "manual") {
+  if (quotePage(route.page)) {
     renderManualCatalog();
     void loadCatalog();
     void updatePreview();
@@ -603,7 +636,7 @@ function draftItems() {
 }
 
 function readQuoteClient(form) {
-  return Object.fromEntries(["name", "phone", "city", "state"].map(name => [name, form.elements.namedItem(name).value.trim()]));
+  return Object.fromEntries(["name", "phone"].map(name => [name, form.elements.namedItem(name).value.trim()]));
 }
 
 async function updatePreview() {
@@ -637,6 +670,10 @@ function missingPrices() {
   return state.preview.total == null || state.preview.items.some(item => item.unitPrice == null);
 }
 
+function hasUnreviewedInterpretation() {
+  return draftUi.source === "IA" && (draftUi.pendingAi.length > 0 || Boolean(state.conversation?.needsClarification));
+}
+
 function renderSummary() {
   const estimate = state.preview;
   const quantity = estimate?.quantity ?? state.draft.reduce((sum, item) => sum + item.quantity, 0);
@@ -660,13 +697,16 @@ function renderSummary() {
     retry.addEventListener("click", () => void updatePreview());
     warning.append(element("span", "", `${state.previewError} `), retry);
     warning.hidden = false;
+  } else if (hasUnreviewedInterpretation()) {
+    warning.append(element("span", "", "Revise os itens interpretados ou resolva as pendências antes de emitir."));
+    warning.hidden = false;
   } else if (missingPrices()) {
     warning.append(element("span", "", "Há itens sem preço para a tabela aplicada. "), link("Cadastrar preços", "#precos"));
     warning.hidden = false;
   }
   byId("quote-preview-pdf").disabled = state.issueBusy || state.draft.length === 0;
   const issue = byId("quote-issue");
-  issue.disabled = state.issueBusy || Boolean(state.issueConfirmation) || !estimate || !quantity || missingPrices();
+  issue.disabled = state.issueBusy || Boolean(state.issueConfirmation) || !estimate || !quantity || missingPrices() || hasUnreviewedInterpretation();
   issue.querySelector("span").textContent = state.issueBusy ? "Emitindo…" : "Emitir orçamento";
 }
 
@@ -938,6 +978,7 @@ function generateRequestId() {
 function setQuoteBusy(busy) {
   state.issueBusy = busy;
   for (const control of byId("client-form").elements) control.disabled = busy;
+  byId("draft-notes").disabled = busy;
   byId("item-cancel").disabled = busy;
   renderManualCatalog();
   renderManualRows();
@@ -946,7 +987,7 @@ function setQuoteBusy(busy) {
 }
 
 async function issueQuote() {
-  if (state.issueBusy || state.issueConfirmation || state.aiBusy || draftUi.busy || !state.preview || missingPrices()) return;
+  if (state.issueBusy || state.issueConfirmation || state.aiBusy || draftUi.busy || draftUi.switching || !state.preview || missingPrices() || hasUnreviewedInterpretation()) return;
   const form = byId("client-form");
   const name = byId("client-name");
   name.value = name.value.trim();
@@ -1028,10 +1069,11 @@ function closeQuoteConfirmation(restorePosition = true) {
   state.issueConfirmation = null;
   byId("quote-success").close();
   resetDraftWorkspace();
+  if (draftUi.source === "IA") clearOrderConversation();
   renderDraftList();
   if (restorePosition) {
     const active = confirmation.focus;
-    const focus = state.route?.page === "manual" ? byId("quote-summary-title")
+    const focus = quotePage(state.route?.page) ? byId("quote-summary-title")
       : active?.isConnected && active !== document.body && !active.disabled ? active : byId("main");
     focus.focus({ preventScroll: true });
     window.scrollTo(confirmation.x, confirmation.y);
@@ -1405,6 +1447,13 @@ function appendChat(text, role = "assistant", questions = []) {
   return row;
 }
 
+function clearOrderConversation() {
+  state.conversation = null;
+  byId("chat-message").value = "";
+  initializeChat();
+  renderAIControl();
+}
+
 function initializeChat() {
   byId("chat-log").replaceChildren();
   appendChat("Cole a mensagem de pedido aqui. Vou identificar as iscas e perguntar o que estiver faltando.");
@@ -1439,7 +1488,7 @@ function renderAIControl() {
   const blocked = state.aiBusy || !state.aiOnline;
   byId("chat-message").disabled = !state.aiOnline;
   byId("chat-send").disabled = blocked;
-  byId("chat-send").querySelector("span").textContent = state.aiBusy ? "Processando…" : "Enviar";
+  byId("chat-send").querySelector("span").textContent = state.aiBusy ? "Processando…" : "Interpretar com URUTAU AI";
   byId("ai-new").disabled = blocked;
   renderAIItems();
 }
@@ -1471,15 +1520,21 @@ function renderAIItems() {
 }
 
 async function startConversation() {
-  if (state.aiBusy || state.issueBusy || state.issueConfirmation || draftUi.busy || !state.aiOnline) return;
+  if (state.aiBusy || state.issueBusy || state.issueConfirmation || draftUi.busy || draftUi.switching || !state.aiOnline) return;
+  if (hasUnreviewedInterpretation() && !window.confirm("Iniciar outra interpretação e descartar as sugestões ainda em revisão?")) return;
   const field = byId("chat-message");
   const draft = field.value;
   state.aiBusy = true;
   renderAIControl();
   try {
     state.conversation = await api("/api/ai/conversations", { method: "POST" });
+    if (draftUi.pendingAi.length) {
+      draftUi.pendingAi = [];
+      queueDraftSave();
+    }
     if (field.value === draft) field.value = "";
     initializeChat();
+    renderSummary();
   } catch (error) {
     appendChat(error.message, "error");
   } finally {
@@ -1490,7 +1545,7 @@ async function startConversation() {
 
 async function sendMessage(event) {
   event.preventDefault();
-  if (state.aiBusy || state.issueBusy || state.issueConfirmation || draftUi.busy || !state.aiOnline) return;
+  if (state.aiBusy || state.issueBusy || state.issueConfirmation || draftUi.busy || draftUi.switching || !state.aiOnline) return;
   const field = byId("chat-message");
   const draft = field.value;
   const message = draft.trim();
@@ -1521,6 +1576,8 @@ async function sendMessage(event) {
   } finally {
     state.aiBusy = false;
     renderAIControl();
+    renderSummary();
+    updateDraftStatus();
   }
 }
 
@@ -1536,8 +1593,8 @@ function reviewItems(items) {
   draftUi.pendingAi = [];
   resetItemEditor();
   draftChanged();
-  location.hash = "novo-orcamento";
-  toast("Itens enviados para revisão no orçamento.");
+  byId("items-heading").scrollIntoView({ block: "start" });
+  toast("Itens incluídos. Confira o orçamento antes de emitir.");
 }
 
 function bindEvents() {
@@ -1650,11 +1707,13 @@ function bindEvents() {
   bindDraftEvents();
   bindOrderEvents();
   bindCustomerEvents();
+  bindAssistant();
 }
 
 async function loadSession() {
   try {
     state.session = await api("/api/session");
+    byId("assistant-launch").hidden = false;
     byId("account-name").textContent = state.session.username;
     byId("account-avatar").textContent = state.session.username.slice(0, 2).toLocaleUpperCase("pt-BR");
     byId("logout-csrf").value = state.session.csrfToken;
@@ -1668,7 +1727,7 @@ async function loadSession() {
 function hasUnfinishedQuote() {
   return state.issueBusy || draftIsDirty() || state.draft.length > 0 || state.editingItem !== null || state.selectedColors.size > 0
     || Object.values(readQuoteClient(byId("client-form"))).some(Boolean)
-    || state.aiBusy || Boolean(state.conversation?.items.length || state.conversation?.needsClarification
+    || assistantHasConversation() || state.aiBusy || Boolean(state.conversation?.items.length || state.conversation?.needsClarification
       || byId("chat-message").value.trim());
 }
 
@@ -1677,9 +1736,7 @@ function initialize() {
   const today = new Date();
   byId("header-date").dateTime = today.toISOString();
   byId("header-date").textContent = currentDateFormat.format(today);
-  const states = "AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO".split(" ");
-  setOptions(byId("client-state"), states.map(code => [code, code]), "Selecione");
-  setOptions(byId("customer-state"), states.map(code => [code, code]), "Selecione");
+
   initializeChat();
   renderManualRows();
   navigate();

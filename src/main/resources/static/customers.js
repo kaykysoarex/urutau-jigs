@@ -24,10 +24,6 @@ function customerSearch(path, body) {
   return api(`/api/customers/${path}`, { method: "POST", body });
 }
 
-function customerLocation(data) {
-  return [data.city, data.state].filter(Boolean).join(" – ") || "Localidade não informada";
-}
-
 function customerWhatsApp(data) {
   if (!data.whatsapp) return element("span", "order-meta", "WhatsApp indisponível: telefone não informado ou inválido.");
   const anchor = link("Abrir WhatsApp", `https://wa.me/${data.whatsapp}`, "button whatsapp-button");
@@ -38,7 +34,7 @@ function customerWhatsApp(data) {
 
 function customerCandidates(host, records, onPick) {
   for (const record of records) {
-    const label = [record.name, record.establishment, record.phone, record.city, record.state,
+    const label = [record.name, record.establishment, record.phone,
       record.active ? "" : "Inativo"].filter(Boolean).join(" · ");
     host.append(customerButton(label, () => onPick(record)));
   }
@@ -185,7 +181,7 @@ function restoreQuoteCustomer(ref, master) {
 
 function applyQuoteCustomer(record) {
   const form = byId("client-form");
-  for (const key of ["name", "phone", "city", "state"]) form.elements.namedItem(key).value = record[key] ?? "";
+  for (const key of ["name", "phone"]) form.elements.namedItem(key).value = record[key] ?? "";
   restoreQuoteCustomer({ id: record.id, version: record.version }, record);
   queueDraftSave();
 }
@@ -220,7 +216,9 @@ async function loadCustomers(page) {
       heading.append(element("h2", "", customer.name), element("span", "state-pill", customer.active ? "Ativo" : "Inativo"));
       const actions = element("div", "order-actions");
       actions.append(customerButton("Ver cadastro", () => void openCustomer(customer.id)), customerWhatsApp(customer));
-      row.append(heading, element("p", "order-meta", customerLocation(customer)),
+      row.append(heading);
+      if (customer.establishment) row.append(element("p", "order-meta", customer.establishment));
+      row.append(
         element("strong", "", `${sales.orders} ${sales.orders === 1 ? "pedido confirmado" : "pedidos confirmados"} · ${moneyFormat.format(sales.approvedTotal)}`), actions);
       return row;
     });
@@ -281,7 +279,7 @@ function renderCustomer(detail) {
   }
   byId("customer-body").replaceChildren(orderFacts([
     ["Estabelecimento", customer.establishment || "—"], ["Telefone", customer.phone || "—"],
-    ["E-mail", customer.email || "—"], ["Cidade / UF", customerLocation(customer)], ["Cadastro", orderDate(customer.createdAt)], ["Última atualização", orderDate(customer.updatedAt)],
+    ["E-mail", customer.email || "—"], ["Cadastro", orderDate(customer.createdAt)], ["Última atualização", orderDate(customer.updatedAt)],
     ["Situação", customer.active ? "Ativo" : "Inativo"], ["Observações", customer.notes || "—"],
     ["Orçamentos emitidos", indicators.quotes], ["Aguardando confirmação", indicators.pending],
     ["Pedidos confirmados", sales.orders], ["Iscas em pedidos confirmados", sales.units],
@@ -319,6 +317,8 @@ async function newQuoteForCustomer(customer) {
       toast("Sincronize o rascunho atual antes de abrir outro orçamento.");
       return;
     }
+    if (draftUi.current?.id) draftUi.parked.set(draftUi.source, draftUi.current.id);
+    draftUi.source = "MANUAL";
     resetDraftWorkspace();
     applyQuoteCustomer(customer);
     byId("customer-dialog").close();
@@ -330,7 +330,7 @@ async function newQuoteForCustomer(customer) {
 function editCustomer(customer = null) {
   const form = byId("customer-form");
   form.reset();
-  for (const key of ["name", "establishment", "phone", "email", "city", "state", "notes"]) {
+  for (const key of ["name", "establishment", "phone", "email", "notes"]) {
     form.elements.namedItem(key).value = customer?.[key] ?? "";
   }
   byId("customer-body").replaceChildren();

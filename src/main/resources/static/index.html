@@ -14,6 +14,7 @@
   <script src="/quote-drafts.js" defer></script>
   <script src="/orders.js" defer></script>
   <script src="/customers.js" defer></script>
+  <script src="/assistant.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body class="workspace">
@@ -28,12 +29,13 @@
       <span class="brand-caption">Área administrativa</span>
     </div>
     <nav id="navigation" class="navigation" aria-label="Navegação principal">
-      <p class="nav-label">Orçamentos</p>
-      <a class="nav-link" href="#novo-orcamento" data-page="manual" aria-current="page"><svg class="icon"><use href="/icons.svg#file-plus"/></svg><span>Novo orçamento</span></a>
-      <a class="nav-link" href="#urutau-ai" data-page="ai"><svg class="icon"><use href="/icons.svg#sparkles"/></svg><span>URUTAU AI</span></a>
-      <a class="nav-link" href="#clientes" data-page="customers"><svg class="icon"><use href="/icons.svg#user"/></svg><span>Clientes</span></a>
+      <p class="nav-label">Comercial</p>
+      <a class="nav-link" href="#visao-geral" data-page="overview"><svg class="icon"><use href="/icons.svg#list"/></svg><span>Visão geral</span></a>
+      <a class="nav-link" href="#novo-orcamento" data-page="manual" aria-current="page"><svg class="icon"><use href="/icons.svg#file-plus"/></svg><span>Novo orçamento manual</span></a>
+      <a class="nav-link" href="#novo-orcamento-ia" data-page="ai"><svg class="icon"><use href="/icons.svg#sparkles"/></svg><span>Novo orçamento com IA</span></a>
+      <a class="nav-link" href="#meus-orcamentos" data-page="history"><svg class="icon"><use href="/icons.svg#archive"/></svg><span>Histórico de orçamentos</span></a>
       <a class="nav-link" href="#pedidos" data-page="orders"><svg class="icon"><use href="/icons.svg#receipt"/></svg><span>Pedidos</span></a>
-      <a class="nav-link" href="#meus-orcamentos" data-page="history"><svg class="icon"><use href="/icons.svg#archive"/></svg><span>Meus orçamentos</span></a>
+      <a class="nav-link" href="#clientes" data-page="customers"><svg class="icon"><use href="/icons.svg#user"/></svg><span>Clientes</span></a>
       <p class="nav-label">Administração</p>
       <a class="nav-link" href="#catalogo" data-page="catalog"><svg class="icon"><use href="/icons.svg#boxes"/></svg><span>Catálogo de iscas</span></a>
       <a class="nav-link" href="#precos" data-page="prices"><svg class="icon"><use href="/icons.svg#tag"/></svg><span>Tabela de preços</span></a>
@@ -70,12 +72,21 @@
         </div>
         <button id="pwa-update" class="button secondary" type="button">Atualizar aplicativo</button>
       </div>
+      <section id="page-overview" data-view="overview" aria-labelledby="overview-title" hidden>
+        <div class="page-heading"><h1 id="overview-title">Visão geral</h1></div>
+        <div class="panel panel-body order-actions">
+          <a class="button primary" href="#novo-orcamento">Novo orçamento manual</a>
+          <a class="button secondary" href="#novo-orcamento-ia">Novo orçamento com IA</a>
+          <a class="button secondary" href="#meus-orcamentos">Histórico de orçamentos</a>
+          <a class="button secondary" href="#pedidos">Pedidos</a>
+          <a class="button secondary" href="#clientes">Clientes</a>
+        </div>
+      </section>
       <section id="page-manual" data-view="manual" aria-labelledby="manual-title">
         <div class="page-heading">
-          <div><h1 id="manual-title">Novo orçamento</h1><p>Informe os dados do cliente e selecione as iscas para emitir o orçamento.</p></div>
-          <a class="button secondary ai-shortcut" href="#urutau-ai"><svg class="icon"><use href="/icons.svg#sparkles"/></svg>Usar URUTAU AI</a>
+          <div><h1 id="manual-title">Novo orçamento manual</h1><p>Informe os dados do cliente e selecione as iscas.</p></div>
         </div>
-        <div id="manual-layout" class="quote-grid">
+        <div id="manual-workspace"><div id="manual-layout" class="quote-grid">
           <div class="quote-main">
             <section class="panel panel-body quote-drafts" aria-labelledby="draft-heading">
               <div class="draft-toolbar">
@@ -83,6 +94,7 @@
                 <div class="draft-actions">
                   <button id="draft-latest" class="button secondary" type="button" hidden>Continuar o último orçamento</button>
                   <button id="draft-new" class="button secondary" type="button">Iniciar novo orçamento</button>
+                  <button id="draft-transfer" class="button secondary" type="button" hidden>Transferir rascunho</button>
                 </div>
               </div>
               <details id="draft-list-toggle" hidden>
@@ -114,12 +126,10 @@
                 <div id="quote-customer-link" class="quote-customer-selector" hidden></div>
                 <label class="field"><span>Nome do cliente <span class="required" aria-hidden="true">*</span></span><input id="client-name" name="name" maxlength="120" placeholder="Nome ou razão social" autocapitalize="words" required></label>
                 <label class="field"><span>Telefone</span><input id="client-phone" type="tel" inputmode="tel" name="phone" maxlength="40" placeholder="(00) 00000-0000"></label>
-                <label class="field"><span>Cidade</span><input id="client-city" name="city" maxlength="120" placeholder="Informe a cidade" autocapitalize="words"></label>
-                <label class="field"><span>UF</span><select id="client-state" name="state" aria-label="UF"><option value="">Selecione</option></select></label>
-                <label class="field draft-notes-field"><span>Observações do rascunho</span><textarea id="draft-notes" rows="2" maxlength="1000"></textarea></label>
               </form>
             </section>
 
+            <div id="quote-interpretation" hidden></div>
             <section class="panel items-panel" aria-labelledby="items-heading">
               <div class="section-heading">
                 <span class="section-icon"><svg class="icon"><use href="/icons.svg#boxes"/></svg></span>
@@ -162,6 +172,9 @@
                 <div id="manual-items" class="manual-items" aria-live="polite"></div>
               </div>
             </section>
+            <section class="panel panel-body" aria-label="Observações do orçamento">
+              <label class="field"><span>Observações do rascunho</span><textarea id="draft-notes" rows="2" maxlength="1000"></textarea></label>
+            </section>
           </div>
 
           <aside class="quote-summary panel" aria-labelledby="quote-summary-title">
@@ -187,22 +200,23 @@
               <small class="summary-note"><svg class="icon"><use href="/icons.svg#info"/></svg>Frete não incluso.</small>
             </div>
           </aside>
-        </div>
+        </div></div>
       </section>
 
       <section id="page-ai" data-view="ai" aria-labelledby="ai-title" hidden>
         <div class="page-heading">
-          <div><h1 id="ai-title">URUTAU AI</h1><p>Transforme uma mensagem de pedido em itens para revisar no orçamento.</p></div>
+          <div><h1 id="ai-title">Novo orçamento com IA</h1><p>Interprete a mensagem, confira os itens e emita o orçamento nesta página.</p></div>
           <button id="ai-new" class="button secondary" type="button"><svg class="icon"><use href="/icons.svg#plus"/></svg>Nova conversa</button>
         </div>
-        <div class="ai-grid">
+        <div id="ai-workspace"></div>
+        <div id="ai-interpreter" class="ai-grid">
           <section class="panel chat-panel" aria-label="Conversa com a URUTAU AI">
-            <div class="section-heading"><span class="section-icon"><svg class="icon"><use href="/icons.svg#sparkles"/></svg></span><div><h2>Assistente de orçamento</h2><p>Conversa interna com o administrador.</p></div></div>
+            <div class="section-heading"><span class="section-icon"><svg class="icon"><use href="/icons.svg#sparkles"/></svg></span><div><h2>Interpretação do pedido</h2></div></div>
             <div id="chat-log" class="chat-log" role="log" aria-label="Mensagens da conversa" aria-live="polite" aria-relevant="additions" tabindex="0"></div>
             <form id="chat-form" class="chat-form">
               <div id="ai-warning" class="notice ai-warning" role="status" hidden></div>
               <label class="field"><span>Mensagem do pedido ou resposta</span><textarea id="chat-message" rows="4" placeholder="Cole a mensagem do pedido ou responda às dúvidas do assistente." autocomplete="off" required disabled></textarea></label>
-              <div class="chat-actions"><small>Remova nomes, telefones e endereços das mensagens copiadas.</small><button id="chat-send" class="button primary" type="submit" disabled><svg class="icon"><use href="/icons.svg#send"/></svg><span>Enviar</span></button></div>
+              <div class="chat-actions"><small>Remova nomes, telefones e endereços das mensagens copiadas.</small><button id="chat-send" class="button primary" type="submit" disabled><svg class="icon"><use href="/icons.svg#send"/></svg><span>Interpretar com URUTAU AI</span></button></div>
             </form>
           </section>
           <aside class="panel" aria-labelledby="ai-items-heading">
@@ -218,7 +232,7 @@
           <button id="customer-new" type="button" class="button primary">Cadastrar cliente</button>
         </div>
         <form id="customer-filters" class="panel panel-body order-fields">
-          <label class="field"><span>Pesquisar clientes</span><input id="customer-search" type="search" maxlength="120" placeholder="Nome, loja, telefone, cidade ou UF"></label>
+          <label class="field"><span>Pesquisar clientes</span><input id="customer-search" type="search" maxlength="120" placeholder="Nome, loja ou telefone"></label>
           <label class="field"><span>Situação</span><select id="customer-filter"><option value="">Todos</option><option value="true">Ativos</option><option value="false">Inativos</option></select></label>
         </form>
         <p id="customers-feedback" class="order-feedback" role="status"></p>
@@ -248,7 +262,7 @@
 
       <section id="page-history" data-view="history" aria-labelledby="history-title" hidden>
         <div class="page-heading">
-          <div><h1 id="history-title">Meus orçamentos</h1><p>Consulte os orçamentos emitidos, visualize ou baixe os PDFs.</p></div>
+          <div><h1 id="history-title">Histórico de orçamentos</h1><p>Consulte os orçamentos emitidos, visualize ou baixe os PDFs.</p></div>
           <a class="button primary" href="#novo-orcamento"><svg class="icon"><use href="/icons.svg#plus"/></svg>Novo orçamento</a>
         </div>
         <section class="panel" aria-label="Histórico de orçamentos"><div id="history-content" aria-live="polite"></div><div id="history-pages" class="pagination" hidden></div></section>
@@ -290,6 +304,25 @@
     </main>
   </div>
 
+  <button id="assistant-launch" class="assistant-launch" type="button" aria-label="Abrir assistente URUTAU AI" aria-haspopup="dialog" hidden><svg class="icon" aria-hidden="true"><use href="/icons.svg#sparkles"/></svg></button>
+  <dialog id="assistant-panel" class="quote-share-dialog assistant-panel" aria-labelledby="assistant-title">
+    <header class="dialog-heading">
+      <div><h2 id="assistant-title" tabindex="-1">URUTAU AI</h2><p>Assistente administrativa</p></div>
+      <div class="assistant-actions">
+        <button id="assistant-new" class="button secondary" type="button">Nova conversa</button>
+        <button id="assistant-minimize" class="button secondary" type="button">Minimizar</button>
+        <button id="assistant-close" class="button secondary" type="button">Fechar</button>
+      </div>
+    </header>
+    <p id="assistant-context" class="assistant-context"></p>
+    <div id="assistant-log" class="chat-log" role="log" aria-label="Conversa administrativa" tabindex="0"></div>
+    <form id="assistant-form" class="chat-form">
+      <p id="assistant-feedback" role="status"></p>
+      <label class="field"><span>Mensagem para a assistente</span><textarea id="assistant-message" rows="2" maxlength="1000" required></textarea></label>
+      <button id="assistant-send" class="button primary" type="submit">Enviar</button>
+    </form>
+  </dialog>
+
   <dialog id="customer-dialog" class="quote-confirmation order-dialog" aria-labelledby="customer-title">
     <div class="dialog-heading"><h2 id="customer-title" tabindex="-1" autofocus>Cliente</h2><button id="customer-close" class="button secondary" type="button">Fechar</button></div>
     <div id="customer-body" class="dialog-body"></div>
@@ -299,8 +332,6 @@
         <label class="field"><span>Estabelecimento</span><input name="establishment" maxlength="120"></label>
         <label class="field"><span>Telefone ou WhatsApp</span><input name="phone" type="tel" maxlength="40" inputmode="tel"></label>
         <label class="field"><span>E-mail</span><input name="email" type="email" maxlength="254"></label>
-        <label class="field"><span>Cidade</span><input name="city" maxlength="120"></label>
-        <label class="field"><span>Estado</span><select name="state" id="customer-state"><option value="">Selecione</option></select></label>
         <label class="field customer-wide"><span>Observações comerciais</span><textarea name="notes" rows="3" maxlength="1000"></textarea></label>
         <div id="customer-duplicates" class="customer-picker customer-wide" hidden></div>
         <p id="customer-form-error" class="form-error customer-wide" role="status" hidden></p>

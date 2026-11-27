@@ -73,7 +73,7 @@ public class QuoteService {
         var lines = preview.items().stream().map(line -> new QuotePdf.Line(
                 line.model(), line.weight(), line.color(), line.quantity(), line.unitPrice(), line.subtotal())).toList();
         return new QuotePdf.Preview(LocalDate.ofInstant(clock.instant(), COMMERCIAL_ZONE),
-                new QuotePdf.Client(client.name(), client.phone(), client.city(), client.state()),
+                new QuotePdf.Client(client.name(), client.phone(), null, null),
                 lines, preview.quantity(), preview.total());
     }
 
@@ -94,9 +94,13 @@ public class QuoteService {
         if (draft != null) {
             draft.requireVersion(request.draftVersion());
             var saved = json.readValue(draft.content, QuoteDraftDtos.Content.class);
+            if (saved.source() == QuoteDraftDtos.Source.IA && !saved.pendingAi().isEmpty()) {
+                throw conflict("Revise os itens da URUTAU AI antes de emitir.");
+            }
             Long savedCustomer = saved.customer() == null ? null : saved.customer().id();
             Long selectedCustomer = request.customer() == null ? null : request.customer().id();
-            if (!saved.client().equals(client) || !saved.items().equals(request.items())
+            if (!java.util.Objects.equals(saved.client().name(), client.name())
+                    || !java.util.Objects.equals(saved.client().phone(), client.phone()) || !saved.items().equals(request.items())
                     || !java.util.Objects.equals(savedCustomer, selectedCustomer)) {
                 throw conflict("Sincronize as alterações do rascunho antes de emitir.");
             }
@@ -111,7 +115,7 @@ public class QuoteService {
 
         var now = clock.instant().truncatedTo(ChronoUnit.MICROS);
         var quote = new CommercialQuote(request.requestId().toString(), admin, now,
-                LocalDate.ofInstant(now, COMMERCIAL_ZONE), client, preview);
+                LocalDate.ofInstant(now, COMMERCIAL_ZONE), new Client(client.name(), client.phone(), null, null), preview);
         quote.customerId = customers.resolve(request.customer(), client, admin);
         if (draft != null) draft.close(now);
         return quotes.saveAndFlush(quote).summary();

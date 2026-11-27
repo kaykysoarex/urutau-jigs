@@ -123,7 +123,7 @@ class CustomerService {
     }
 
     private void write(CommercialCustomer customer, CustomerDtos.Input data, String actor, String action) {
-        var snapshot = QuoteService.clean(new QuoteDtos.Client(data.name(), data.phone(), data.city(), data.state()));
+        var snapshot = QuoteService.clean(new QuoteDtos.Client(data.name(), data.phone(), null, null));
         if (snapshot.name() == null) throw bad("Informe o nome ou razão social.");
         var normalized = CustomerPhone.normalize(snapshot.phone());
         if (snapshot.phone() != null && normalized == null) throw bad("Informe um telefone válido com DDD ou código internacional.");

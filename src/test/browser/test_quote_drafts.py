@@ -69,25 +69,25 @@ def assert_restored(page):
 def conflicts(first, second, original):
     open_latest(second)
     assert_restored(second)
-    first.locator("#client-city").fill("Cidade no primeiro dispositivo")
+    first.locator("#draft-notes").fill("Observação no primeiro dispositivo")
     saved(first)
-    second.locator("#client-city").fill("Versão local")
+    second.locator("#draft-notes").fill("Versão local")
     expect(second.locator("#draft-conflict")).to_be_visible()
     second.once("dialog", lambda dialog: dialog.accept())
     second.locator("#draft-reload").click()
     saved(second)
-    expect(second.locator("#client-city")).to_have_value("Cidade no primeiro dispositivo")
+    expect(second.locator("#draft-notes")).to_have_value("Observação no primeiro dispositivo")
 
-    first.locator("#client-city").fill("Edição mais recente")
+    first.locator("#draft-notes").fill("Edição mais recente")
     saved(first)
-    second.locator("#client-city").fill("Preservar esta edição")
+    second.locator("#draft-notes").fill("Preservar esta edição")
     expect(second.locator("#draft-conflict")).to_be_visible()
     second.locator("#draft-copy").click()
     saved(second)
     records = drafts(second)
     assert len(records) == 2 and records[0]["id"] != original
     kept = second.request.get(f"{DRAFTS}/{original}").json()
-    assert kept["content"]["client"]["city"] == "Edição mais recente"
+    assert kept["content"]["notes"] == "Edição mais recente"
     return records[0]["id"]
 
 
@@ -156,18 +156,17 @@ def issue_and_discard(page, draft_id, untouched):
 
 
 def ai_recovery(page):
-    page.goto("/#urutau-ai")
+    page.goto("/#novo-orcamento-ia")
     field = page.locator("#chat-message")
     field.fill("• Spinner | 12g | Cor 03 | Qtd: 5\n\n*Total: 5 unidades*")
     page.locator("#chat-send").click()
     expect(page.locator("#ai-review")).to_be_enabled()
-    page.goto("/#novo-orcamento")
     saved(page)
     draft_id = drafts(page)[0]["id"]
     assert page.request.get(f"{DRAFTS}/{draft_id}").json()["content"]["pendingAi"][0]["quantity"] == 5
 
     ai_requests = []
-    page.on("request", lambda request: ai_requests.append(request) if "/api/ai" in request.url else None)
+    page.on("request", lambda request: ai_requests.append(request) if "/api/ai/conversations" in request.url else None)
     page.reload()
     open_latest(page)
     page.locator("#draft-ai-review").click()
