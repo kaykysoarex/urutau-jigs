@@ -23,12 +23,12 @@ O JAR distribuído requer Java 21. Para compilar o código-fonte, instale també
            [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2], 'Process')
        }
    }
-   java -jar ..\urutau-jigs-0.2.3.jar
+   java -jar ..\urutau-jigs-0.2.4.jar
    ```
 
 3. Abra [o painel local](http://127.0.0.1:8080/) e entre com uma das contas. Confira os valores em **Tabela de preços**. Os preços iniciais do catálogo oficial são cadastrados pelo Flyway. O H2 guarda os registros em `data/` da pasta onde a aplicação foi iniciada.
 
-Use `mvn spring-boot:run` para executar pelo código-fonte. Use `mvn clean verify` para executar os testes e gerar o JAR em `target/urutau-jigs-0.2.3.jar`. Em Linux, exporte as mesmas variáveis no ambiente do processo e execute o JAR com Java 21.
+Use `mvn spring-boot:run` para executar pelo código-fonte. Use `mvn clean verify` para executar os testes e gerar o JAR em `target/urutau-jigs-0.2.4.jar`. Em Linux, exporte as mesmas variáveis no ambiente do processo e execute o JAR com Java 21.
 
 ## Instalar o URUTAU JIGS como aplicativo
 
@@ -123,9 +123,9 @@ Edite os valores vigentes em **Tabela de preços**. O banco é a fonte usada pel
 
 ## Navegação comercial e URUTAU AI
 
-O menu **Comercial** inclui Visão geral, Novo orçamento manual, Novo orçamento com IA, Histórico de orçamentos, Pedidos e Clientes. O gerador com IA interpreta a mensagem, exibe as pendências, deixa revisar e corrigir as combinações e emite o orçamento na própria página. O gerador manual usa o mesmo editor, resumo, cálculo Java e PDF.
+O menu **Comercial** inclui Visão geral, Novo orçamento manual, Novo orçamento com IA, Histórico de orçamentos, Pedidos e Clientes. No gerador com IA, selecione ou informe o cliente e cole o pedido em **Interpretação do pedido**. Use **Solicitar alterações à IA** para complementar os itens, remover combinações, alterar quantidades, trocar modelos, gramaturas ou cores e registrar observações. Os itens são exibidos em modo de leitura. **Revisar orçamento** aplica a proposta ao rascunho e mantém a emissão como uma ação separada. Os dois geradores usam o mesmo cálculo Java e o mesmo PDF.
 
-Os rascunhos mostram a origem Manual ou Com IA. Ao trocar de gerador, a aplicação sincroniza o trabalho e pode retomar o rascunho estacionado naquele modo durante a navegação. A abertura pela lista direciona ao gerador de origem. A transferência explícita conserva o identificador do rascunho. Rascunhos antigos com itens de IA pendentes abrem no modo IA. Os demais abrem no modo manual. A origem fica no próprio conteúdo do rascunho, usando a estrutura existente.
+Os rascunhos mostram a origem Manual ou Com IA. Ao trocar de gerador, a aplicação sincroniza o trabalho e pode retomar o rascunho estacionado naquele modo durante a navegação. A abertura pela lista direciona ao gerador de origem. A transferência explícita conserva o identificador do rascunho. Rascunhos antigos com itens de IA pendentes abrem no modo IA. Os demais abrem no modo manual. A origem e o progresso da interpretação ficam no próprio conteúdo do rascunho, usando a estrutura existente. Para editar produtos por seletores, descarte ou confirme a proposta em revisão e transfira o rascunho para o modo manual. Confirme as propostas antes de emitir.
 
 O formulário de orçamento solicita nome e, opcionalmente, telefone. Cidade e UF foram retiradas das telas, das buscas e dos novos PDFs. As colunas e os dados históricos permanecem no banco para preservar os documentos anteriores.
 
@@ -201,7 +201,7 @@ O provedor de IA interpreta mensagens livres e ajuda a esclarecer trechos ambíg
    GEMINI_MODEL=gemini-3.5-flash-lite
    ```
 
-3. Pare a execução anterior. Na mesma pasta `urutau-jigs`, recarregue o `.env` com o trecho de PowerShell da seção de instalação e execute `java -jar ..\urutau-jigs-0.2.3.jar`. A mesma pasta de trabalho mantém o acesso a `data/urutau.mv.db` quando o H2 padrão estiver em uso. Em **Comercial**, abra **Novo orçamento com IA** e interprete um pedido de teste como `3 Spinner 12g cor 03`.
+3. Pare a execução anterior. Na mesma pasta `urutau-jigs`, recarregue o `.env` com o trecho de PowerShell da seção de instalação e execute `java -jar ..\urutau-jigs-0.2.4.jar`. A mesma pasta de trabalho mantém o acesso a `data/urutau.mv.db` quando o H2 padrão estiver em uso. Em **Comercial**, abra **Novo orçamento com IA** e interprete um pedido de teste como `3 Spinner 12g cor 03`.
 
 O modelo padrão, inclusive com `GEMINI_MODEL` em branco, é o Gemini 3.5 Flash-Lite estável. O back-end usa a operação oficial `generateContent` com Structured Outputs. Os limites de uso dependem do projeto no Google. Se a cota acabar ou o serviço falhar, a interface informa o erro e o gerador manual continua disponível. [Modelo e modalidade gratuita](https://aistudio.google.com/docs/models/gemini-3.5-flash-lite#pricing) · [Limites de uso](https://aistudio.google.com/docs/rate-limits)
 
@@ -215,7 +215,7 @@ Cole somente a parte da mensagem que descreve os itens. Informe nome, telefone, 
 
 A conversa é vinculada à sessão administrativa, e **Nova conversa** cria outro contexto. O rascunho e as perguntas relevantes acompanham as mensagens seguintes até o encerramento ou expiração da sessão. Reiniciar o aplicativo inicia uma nova sessão.
 
-As sugestões são validadas contra o catálogo e apresentadas no editor do gerador com IA quando estão prontas para revisão. A emissão acontece após a aprovação do administrador. O gerador manual funciona sem chave de IA e durante indisponibilidades do provedor.
+Pedidos estruturados válidos complementam os itens atuais pela interpretação Java. Instruções livres usam o Gemini, que propõe apenas as combinações afetadas pelo comando. O Java valida a proposta inteira antes de disponibilizá-la para revisão. Se faltar algum dado, responda à pergunta da assistente. Para registrar uma observação sem consultar o provedor, use, por exemplo, `Adicione uma observação informando que o cliente prefere receber na próxima semana.` As observações são mantidas no rascunho. A emissão acontece após a aprovação do administrador. O gerador manual funciona sem chave de IA e durante indisponibilidades do provedor.
 
 ## Estrutura
 
@@ -239,15 +239,15 @@ Os testes de navegador executam o JAR gerado por `mvn clean verify` com um H2 de
 ```powershell
 python -m pip install -r src/test/browser/requirements.txt
 python -m playwright install chromium
-python src/test/browser/test_bulk_colors.py target/urutau-jigs-0.2.3.jar
-python src/test/browser/test_whatsapp_share.py target/urutau-jigs-0.2.3.jar
-python src/test/browser/test_pwa.py target/urutau-jigs-0.2.3.jar
-python src/test/browser/test_mobile_layout.py target/urutau-jigs-0.2.3.jar --output target/auditoria-mobile
-python src/test/browser/test_quote_confirmation.py target/urutau-jigs-0.2.3.jar
-python src/test/browser/test_quote_drafts.py target/urutau-jigs-0.2.3.jar
-python src/test/browser/test_orders.py target/urutau-jigs-0.2.3.jar
-python src/test/browser/test_customers.py target/urutau-jigs-0.2.3.jar
-python src/test/browser/test_workspaces.py target/urutau-jigs-0.2.3.jar
+python src/test/browser/test_bulk_colors.py target/urutau-jigs-0.2.4.jar
+python src/test/browser/test_whatsapp_share.py target/urutau-jigs-0.2.4.jar
+python src/test/browser/test_pwa.py target/urutau-jigs-0.2.4.jar
+python src/test/browser/test_mobile_layout.py target/urutau-jigs-0.2.4.jar --output target/auditoria-mobile
+python src/test/browser/test_quote_confirmation.py target/urutau-jigs-0.2.4.jar
+python src/test/browser/test_quote_drafts.py target/urutau-jigs-0.2.4.jar
+python src/test/browser/test_orders.py target/urutau-jigs-0.2.4.jar
+python src/test/browser/test_customers.py target/urutau-jigs-0.2.4.jar
+python src/test/browser/test_workspaces.py target/urutau-jigs-0.2.4.jar
 ```
 
 Se já tiver Chrome ou Edge instalado, use `--channel chrome` ou `--channel msedge` nos comandos de teste e dispense a instalação do Chromium pelo Playwright.

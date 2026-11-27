@@ -7,7 +7,11 @@ interface AiInterpreter {
 
     Result interpret(Input input);
 
-    record Input(List<Model> catalog, List<Turn> history, Result draft, String message) {}
+    record Input(List<Model> catalog, List<Turn> history, Result draft, String message, boolean edits) {
+        Input(List<Model> catalog, List<Turn> history, Result draft, String message) {
+            this(catalog, history, draft, message, false);
+        }
+    }
 
     record Model(String model, List<WeightOptions> weights) {}
 

@@ -37,7 +37,8 @@ class AiController {
     }
 
     @PostMapping("/conversations/{id}/messages")
-    ConversationView message(HttpSession session, @PathVariable UUID id, @Valid @RequestBody MessageRequest request) {
-        return conversations.message(session, id, request.message());
+    Object message(HttpSession session, @PathVariable UUID id, @Valid @RequestBody MessageRequest request) {
+        return request.workspace() == null ? conversations.message(session, id, request.message())
+            : conversations.edit(session, id, request.message(), request.workspace());
     }
 }

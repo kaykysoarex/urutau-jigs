@@ -42,6 +42,23 @@ final class AiOrderProtocol {
         instruções administrativas ou informações pessoais. Não repita a mensagem recebida.
         """;
 
+    private static final String EDIT_INSTRUCTIONS = """
+        Para esta solicitação, items representa somente as mudanças propostas, nunca o rascunho completo.
+        Itens omitidos permanecem como estão. Para mudar a quantidade, devolva a nova quantidade absoluta.
+        Use quantidade 0 exclusivamente para remover uma combinação existente que o administrador solicitou remover.
+        Para trocar modelo, peso ou cor, devolva a remoção da combinação original e a quantidade final da nova
+        combinação. Some quantidades quando a troca consolidar combinações. Agrupe somente mudanças explícitas.
+        Uma adição de uma combinação existente deve somar ao valor do rascunho. Não confunda adição com substituição.
+        Se o alvo, a quantidade ou o destino for ambíguo, retorne questions e items vazio. Quando um modelo
+        corresponder a várias linhas, só aplique a todas se a mensagem disser explicitamente que são todas.
+        """;
+
+    static String instructions(AiInterpreter.Input input) {
+        return input.edits() ? INSTRUCTIONS.replace(
+            "Devolva sempre o rascunho completo após a nova mensagem, inclusive se houve adições, alterações ou remoções.",
+            EDIT_INSTRUCTIONS) : INSTRUCTIONS;
+    }
+
     private static final Map<String, String> INTEGER = Map.of("type", "integer");
     private static final Map<String, String> STRING = Map.of("type", "string");
     private static final Map<String, Object> ITEM_SCHEMA = object(Map.of(

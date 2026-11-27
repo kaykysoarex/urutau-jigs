@@ -5,24 +5,38 @@ const draftDate = new Intl.DateTimeFormat("pt-BR", {
   dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo"
 });
 const draftApiPath = "/api/quote-drafts";
-const draftUi = { source: "MANUAL", parked: new Map(), switching: false, legacyLocation: {}, entries: [], current: null, busy: false, listRevision: 0, unavailableEditor: null, pendingAi: [] };
+const blankManualEditor = { modelId: null, weight: null, defaultQuantity: "1", editingId: null, editingQuantity: null, colors: [] };
+const draftUi = { source: "MANUAL", parked: new Map(), switching: false, legacyLocation: {}, entries: [], current: null,
+  busy: false, listRevision: 0, unavailableEditor: null, inactiveEditor: blankManualEditor, notes: "",
+  pendingAi: [], aiNotes: null, aiQuestions: [], aiPrevious: "" };
 
-function draftContent() {
+function readManualEditor() {
+  if (!byId("item-form")) return draftUi.inactiveEditor;
   const editor = draftUi.unavailableEditor;
   const colors = new Map(editor?.colors.map(({ variantId, quantity }) => [variantId, quantity]));
   for (const [id, quantity] of state.selectedColors) colors.set(id, quantity);
   return {
+    modelId: Number(byId("item-model").value) || editor?.modelId || null,
+    weight: Number(byId("item-weight").value) || editor?.weight || null,
+    defaultQuantity: draftEditorAmount(byId("item-quantity").value),
+    editingId: state.editingItem,
+    editingQuantity: state.editingQuantity === null ? null : draftEditorAmount(state.editingQuantity),
+    colors: [...colors].map(([variantId, quantity]) => ({ variantId, quantity: draftEditorAmount(quantity) }))
+  };
+}
+
+function draftContent() {
+  const message = byId("chat-message").value;
+  const changeMessage = byId("ai-change-message").value;
+  const ai = draftUi.source === "IA" && (hasAiProposal() || draftUi.aiQuestions.length || message.trim() || changeMessage.trim())
+    ? { proposedNotes: draftUi.aiNotes, questions: draftUi.aiQuestions, previous: draftUi.aiPrevious, message, changeMessage }
+    : null;
+  return {
     client: { ...readQuoteClient(byId("client-form")), ...draftUi.legacyLocation },
     items: draftItems(),
-    notes: byId("draft-notes").value,
-    editor: {
-      modelId: Number(byId("item-model").value) || editor?.modelId || null,
-      weight: Number(byId("item-weight").value) || editor?.weight || null,
-      defaultQuantity: draftEditorAmount(byId("item-quantity").value),
-      editingId: state.editingItem,
-      editingQuantity: state.editingQuantity === null ? null : draftEditorAmount(state.editingQuantity),
-      colors: [...colors].map(([variantId, quantity]) => ({ variantId, quantity: draftEditorAmount(quantity) }))
-    },
+    notes: draftUi.notes,
+    editor: readManualEditor(),
+    ai,
     pendingAi: draftUi.pendingAi.map(({ variantId, quantity }) => ({ variantId, quantity })),
     customer: quoteCustomer.ref,
     source: draftUi.source
@@ -33,8 +47,8 @@ function draftEditorAmount(value) {
   return /^[0-9eE+.-]{0,24}$/u.test(value) ? value : "";
 }
 
-function meaningfulDraft({ client, items, notes, editor, pendingAi }) {
-  return Object.values(client).some(Boolean) || items.length > 0 || notes.trim() !== "" || pendingAi.length > 0
+function meaningfulDraft({ client, items, notes, editor, pendingAi, ai }) {
+  return Object.values(client).some(Boolean) || items.length > 0 || notes.trim() !== "" || pendingAi.length > 0 || Boolean(ai)
     || editor.modelId !== null || editor.defaultQuantity !== "1" || editor.editingId !== null;
 }
 
@@ -69,10 +83,12 @@ function updateDraftStatus() {
   byId("draft-retry").hidden = !dirty || Boolean(draft.conflict || draft.saving || (!draft.error && !offline));
   byId("draft-conflict").hidden = !draft?.conflict;
   byId("draft-loss-warning").hidden = !dirty || (!offline && !draft.error && !draft.conflict);
-  byId("draft-ai-review").hidden = draftUi.source !== "IA" || !draftUi.pendingAi.length;
-  byId("draft-transfer").hidden = !draft || hasUnreviewedInterpretation();
+  byId("draft-ai-review").hidden = !hasAiProposal() || draftUi.source !== "IA";
+  byId("draft-ai-review").disabled = Boolean(draftUi.aiQuestions.length);
+  byId("draft-transfer").hidden = !draft || hasUnreviewedInterpretation()
+    || Boolean(byId("chat-message").value || byId("ai-change-message").value);
   byId("draft-transfer").textContent = draftUi.source === "IA" ? "Transferir para manual" : "Transferir para IA";
-  byId("draft-editor-clear").hidden = !draftUi.unavailableEditor;
+  byId("draft-editor-clear").hidden = draftUi.source !== "MANUAL" || !draftUi.unavailableEditor;
   window.urutauPwa?.renderUpdate();
 }
 
@@ -236,10 +252,17 @@ function resetDraftWorkspace() {
   draftUi.current = null;
   draftUi.legacyLocation = {};
   draftUi.pendingAi = [];
+  draftUi.aiNotes = null;
+  draftUi.aiQuestions = [];
+  draftUi.aiPrevious = "";
+  draftUi.inactiveEditor = blankManualEditor;
+  draftUi.notes = "";
   state.draft = [];
   state.quoteAttempt = null;
   byId("client-form").reset();
-  byId("draft-notes").value = "";
+  if (byId("draft-notes")) byId("draft-notes").value = "";
+  clearOrderConversation();
+  void updateProposalEstimate();
   clearQuoteCustomer();
   formFeedback("draft-restore-notice", "");
   resetItemEditor();
@@ -256,15 +279,14 @@ function completeDraftIssue() {
     forgetDraft(id);
   }
   resetDraftWorkspace();
-  if (draftUi.source === "IA") clearOrderConversation();
   formFeedback("draft-list-error", "");
 }
 
 function hydrateDraft(opened) {
   const { summary, content, variants, estimateChanged, editorUnavailable } = opened;
-  const { editor } = content;
-  resetDraftWorkspace();
   draftUi.source = content.source ?? "MANUAL";
+  mountManualEditor(draftUi.source === "MANUAL");
+  resetDraftWorkspace();
   draftUi.legacyLocation = { city: content.client.city ?? null, state: content.client.state ?? null };
   const catalog = new Map(variants.map(variant => [variant.variantId, variant]));
   const details = items => items.map(item => ({ ...catalog.get(item.variantId), ...item }));
@@ -273,18 +295,16 @@ function hydrateDraft(opened) {
   for (const name of ["name", "phone"]) {
     byId("client-form").elements.namedItem(name).value = content.client[name] ?? "";
   }
-  byId("draft-notes").value = content.notes;
+  draftUi.notes = content.notes;
+  draftUi.aiNotes = content.ai?.proposedNotes ?? null;
+  draftUi.aiQuestions = content.ai?.questions ?? [];
+  draftUi.aiPrevious = content.ai?.previous ?? "";
+  byId("chat-message").value = content.ai?.message ?? "";
+  byId("ai-change-message").value = content.ai?.changeMessage ?? "";
   restoreQuoteCustomer(content.customer, opened.customer);
-  byId("item-quantity").value = editor.defaultQuantity;
-  state.editingItem = editor.editingId;
-  state.editingQuantity = editor.editingQuantity;
-  byId("item-add").querySelector("span").textContent = state.editingItem === null ? "Adicionar ao orçamento" : "Salvar item";
-  byId("item-cancel").hidden = state.editingItem === null;
-  state.selectedColors = new Map(editor.colors.map(({ variantId, quantity }) => [variantId, quantity]));
-  renderManualCatalog({ modelId: editor.modelId ?? "", weight: editor.weight ?? "" });
-  if (editorUnavailable || editor.colors.some(color => !state.selectedColors.has(color.variantId))) {
-    draftUi.unavailableEditor = { ...editor, colors: editor.colors.filter(color => !state.selectedColors.has(color.variantId)) };
-  }
+  restoreManualEditor(content.editor, editorUnavailable);
+  if (draftUi.aiQuestions.length) appendChat("Pendências da interpretação anterior", "assistant", draftUi.aiQuestions);
+  void updateProposalEstimate();
   const notices = [];
   if (estimateChanged) notices.push("Os preços ou o limite de lojista mudaram. Confira a estimativa atual.");
   if ([...state.draft, ...draftUi.pendingAi].some(item => !item.active)) {
@@ -299,6 +319,23 @@ function hydrateDraft(opened) {
   void updatePreview();
 }
 
+function restoreManualEditor(editor, unavailable = false) {
+  draftUi.inactiveEditor = editor;
+  if (!byId("item-form")) return;
+  resetItemEditor();
+  byId("draft-notes").value = draftUi.notes;
+  byId("item-quantity").value = editor.defaultQuantity;
+  state.editingItem = editor.editingId;
+  state.editingQuantity = editor.editingQuantity;
+  byId("item-add").querySelector("span").textContent = state.editingItem === null ? "Adicionar ao orçamento" : "Salvar item";
+  byId("item-cancel").hidden = state.editingItem === null;
+  state.selectedColors = new Map(editor.colors.map(({ variantId, quantity }) => [variantId, quantity]));
+  renderManualCatalog({ modelId: editor.modelId ?? "", weight: editor.weight ?? "" });
+  if (unavailable || editor.colors.some(color => !state.selectedColors.has(color.variantId))) {
+    draftUi.unavailableEditor = { ...editor, colors: editor.colors.filter(color => !state.selectedColors.has(color.variantId)) };
+  }
+}
+
 function openDraft(id, ignoreConflict = false) {
   return withDraftAction(async () => {
     if (!ignoreConflict && !await flushDraft()) return;
@@ -311,7 +348,6 @@ function openDraft(id, ignoreConflict = false) {
     }
 
     if (draftUi.current?.id && draftUi.source !== opened.content.source) draftUi.parked.set(draftUi.source, draftUi.current.id);
-    if (opened.content.source === "IA" && draftUi.current?.id !== id) clearOrderConversation();
     hydrateDraft(opened);
     const destination = quoteModeHash(draftUi.source);
     if (location.hash !== destination) location.hash = destination;
@@ -348,6 +384,7 @@ async function switchQuoteWorkspace(source) {
     if (opened?.content.source === source) hydrateDraft(opened);
     else {
       draftUi.source = source;
+      mountManualEditor(source === "MANUAL");
       resetDraftWorkspace();
     }
     updateDraftStatus();
@@ -393,17 +430,24 @@ function discardDraft(entry) {
   });
 }
 
-function bindDraftEvents() {
-  byId("draft-notes").addEventListener("input", queueDraftSave);
-  for (const type of ["input", "change"]) {
-    byId("client-form").addEventListener(type, queueDraftSave);
-    byId("item-form").addEventListener(type, queueDraftSave);
-  }
+function bindManualDraftEvents() {
+  byId("draft-notes").addEventListener("input", event => {
+    draftUi.notes = event.currentTarget.value;
+    queueDraftSave();
+  });
+  for (const type of ["input", "change"]) byId("item-form").addEventListener(type, queueDraftSave);
   for (const id of ["item-select-all", "item-clear-all", "item-apply-quantity", "item-cancel"]) {
     byId(id).addEventListener("click", queueDraftSave);
   }
+}
+
+function bindDraftEvents() {
+  for (const type of ["input", "change"]) byId("client-form").addEventListener(type, queueDraftSave);
+  for (const id of ["chat-message", "ai-change-message"]) byId(id).addEventListener("input", queueDraftSave);
   byId("draft-transfer").addEventListener("click", () => void withDraftAction(async () => {
-    if (!draftUi.current || hasUnreviewedInterpretation() || !window.confirm("Transferir este rascunho para o outro gerador?")) return;
+    if (!draftUi.current || hasUnreviewedInterpretation() || byId("chat-message").value || byId("ai-change-message").value
+        || !window.confirm("Transferir este rascunho para o outro gerador?")) return;
+    const editor = readManualEditor();
     const original = draftUi.source;
     draftUi.source = original === "IA" ? "MANUAL" : "IA";
     if (!await flushDraft()) {
@@ -411,6 +455,8 @@ function bindDraftEvents() {
       return;
     }
     draftUi.parked.delete(original);
+    mountManualEditor(draftUi.source === "MANUAL");
+    restoreManualEditor(editor);
     clearOrderConversation();
     location.hash = quoteModeHash(draftUi.source);
   }));
@@ -421,7 +467,6 @@ function bindDraftEvents() {
       return;
     }
     resetDraftWorkspace();
-    if (draftUi.source === "IA") clearOrderConversation();
     byId("client-name").focus({ preventScroll: true });
   }));
   byId("draft-list-toggle").addEventListener("toggle", event => { byId("draft-list").hidden = !event.currentTarget.open; });
@@ -453,7 +498,7 @@ function bindDraftEvents() {
     formFeedback("draft-restore-notice", "");
     queueDraftSave();
   });
-  byId("draft-ai-review").addEventListener("click", () => reviewItems(draftUi.pendingAi));
+  byId("draft-ai-review").addEventListener("click", reviewConversation);
   addEventListener("offline", updateDraftStatus);
   addEventListener("urutau:offline", updateDraftStatus);
   document.addEventListener("visibilitychange", () => {

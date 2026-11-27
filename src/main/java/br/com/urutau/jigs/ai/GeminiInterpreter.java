@@ -83,7 +83,7 @@ class GeminiInterpreter implements AiInterpreter {
     }
 
     private String requestJson(Input input) {
-        var instruction = Map.of("parts", List.of(Map.of("text", AiOrderProtocol.INSTRUCTIONS)));
+        var instruction = Map.of("parts", List.of(Map.of("text", AiOrderProtocol.instructions(input))));
         var userContent = Map.of("role", "user", "parts", List.of(Map.of("text", json.writeValueAsString(input))));
         var generationConfig = Map.of(
             "responseMimeType", "application/json",

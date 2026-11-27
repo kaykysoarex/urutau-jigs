@@ -69,11 +69,14 @@ class QuoteDraftService {
     Listed save(UUID id, String owner, Save request) {
         String key = id.toString();
         var content = new Content(QuoteService.clean(request.content().client()), request.content().items(),
-                request.content().notes(), request.content().editor(), request.content().pendingAi(), request.content().customer(), request.content().source());
+                request.content().notes(), request.content().editor(), request.content().pendingAi(), request.content().customer(), request.content().source(), request.content().ai());
         if (content.customer() != null && customers.snapshot(content.customer().id()).version() < content.customer().version()) {
             throw invalid("O vínculo do cliente no rascunho é inválido.");
         }
         String payload = json.writeValueAsString(content);
+        if (payload.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 65_535) {
+            throw invalid("O rascunho está muito grande. Encurte as mensagens em edição.");
+        }
         var draft = drafts.lockOwned(key, owner).orElse(null);
         if (draft == null) {
             if (request.version() != null) throw notFound();
@@ -102,7 +105,7 @@ class QuoteDraftService {
         var stored = content(draft);
         var incoming = request.content();
         if (stored.equals(new Content(QuoteService.clean(incoming.client()), incoming.items(), incoming.notes(),
-                incoming.editor(), incoming.pendingAi(), incoming.customer(), incoming.source()))) {
+                incoming.editor(), incoming.pendingAi(), incoming.customer(), incoming.source(), incoming.ai()))) {
             return summary(draft, stored);
         }
         draft.requireVersion(request.version());

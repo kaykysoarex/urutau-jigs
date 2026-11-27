@@ -33,14 +33,29 @@ final class QuoteDraftDtos {
 
     enum Source { MANUAL, IA }
 
+    record AiProgress(@Size(max = 1000) String proposedNotes,
+                      @Size(max = 8) List<@NotNull @Size(max = 260) String> questions,
+                      @Size(max = 3000) String previous,
+                      @Size(max = 12000) String message,
+                      @Size(max = 3000) String changeMessage) {
+        boolean pending() {
+            return proposedNotes != null || questions != null && !questions.isEmpty();
+        }
+    }
+
     record Content(@NotNull @Valid QuoteDtos.Client client,
                    @NotNull @Size(max = QuoteDtos.MAX_ITEMS) List<@NotNull @Valid ItemInput> items,
                    @NotNull @Size(max = 1000) String notes,
                    @NotNull @Valid Editor editor,
                    @NotNull @Size(max = QuoteDtos.MAX_ITEMS) List<@NotNull @Valid ItemInput> pendingAi,
-                   @Valid CustomerDtos.Ref customer, Source source) {
+                   @Valid CustomerDtos.Ref customer, Source source, @Valid AiProgress ai) {
         Content {
-            if (source == null) source = pendingAi != null && !pendingAi.isEmpty() ? Source.IA : Source.MANUAL;
+            if (source == null) source = ai != null || pendingAi != null && !pendingAi.isEmpty() ? Source.IA : Source.MANUAL;
+        }
+
+        Content(QuoteDtos.Client client, List<ItemInput> items, String notes, Editor editor, List<ItemInput> pendingAi,
+                CustomerDtos.Ref customer, Source source) {
+            this(client, items, notes, editor, pendingAi, customer, source, null);
         }
 
         Content(QuoteDtos.Client client, List<ItemInput> items, String notes, Editor editor, List<ItemInput> pendingAi,
@@ -52,9 +67,13 @@ final class QuoteDraftDtos {
         }
 
 
+        boolean pendingReview() {
+            return !pendingAi.isEmpty() || ai != null && ai.pending();
+        }
+
         boolean meaningful() {
             return client.name() != null || client.phone() != null || client.city() != null || client.state() != null
-                    || !notes.isBlank() || !items.isEmpty() || !pendingAi.isEmpty() || editor.meaningful();
+                    || !notes.isBlank() || !items.isEmpty() || pendingReview() || ai != null || editor.meaningful();
         }
     }
 

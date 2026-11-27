@@ -24,6 +24,10 @@ final class CatalogOrderParser {
     private static final Pattern INVALID_NUMERIC_AMOUNT = Pattern.compile(
         "(?iu)^" + QUANTITY_PREFIX + "[+-]?[0-9.,]+\\h*" + COUNT_LABEL + "?[.!]?$");
     private static final Pattern MISSING_AMOUNT = Pattern.compile("(?iu)^" + QUANTITY_PREFIX + "$");
+    private static final Pattern ADD = Pattern.compile(
+        "(?iu)^\\s*(?:adicione|acrescente|inclua)\\h+(" + INTEGER + ")\\h+(?:" + UNIT + "\\h+(?:de\\h+)?)?"
+        + "([^|\\r\\n]{1,120}?)\\h+(?:de\\h+)?([0-9]+\\h*(?:g|gr\\.?|gramas?))"
+        + "\\h+(?:(?:na|da|com\\h+a)\\h+)?cor\\h+([a-z0-9][a-z0-9-]{0,15})[.!]?\\s*$");
     private static final Pattern TOTAL = Pattern.compile(
         "(?iu)^(?:total(?:\\h+geral)?|" + QUANTITY + "\\h+total)(?=\\h|[:=]|$)"
             + "(?:\\h+de\\h+" + UNIT + "(?=\\h|[:=]|$))?\\h*[:=]?\\h*(?:de\\h+)?(.*)$");
@@ -50,6 +54,13 @@ final class CatalogOrderParser {
             + "|[*~_`]*(?:total\\b|" + QUANTITY + "\\h+total\\b))");
 
     private CatalogOrderParser() {}
+
+    static Optional<Order> parseAddition(String message) {
+        var command = ADD.matcher(message);
+        if (!command.matches()) return Optional.empty();
+        return parse("%s | %s | Cor %s | Qtd: %s".formatted(
+            command.group(2), command.group(3), command.group(4), command.group(1)));
+    }
 
     static Optional<Order> parse(String message) {
         String normalized = HIDDEN_FORMAT.matcher(Normalizer.normalize(message, Normalizer.Form.NFKC)).replaceAll("");

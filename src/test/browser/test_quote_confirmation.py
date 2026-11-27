@@ -30,13 +30,19 @@ def make_draft(page, units):
     page.locator("#item-quantity").fill("17")
 
 
-def assert_clean_form(page):
-    for selector in ("#client-name", "#client-phone", "#draft-notes", "#item-model", "#item-weight"):
+def assert_clean_form(page, ai=False):
+    for selector in ("#client-name", "#client-phone"):
         expect(page.locator(selector)).to_have_value("")
     expect(page.locator("#quote-customer-link")).to_be_hidden()
-    expect(page.locator("#item-quantity")).to_have_value("1")
-    expect(page.locator("#item-form input[type=checkbox]:checked")).to_have_count(0)
-    expect(page.locator("#manual-items tbody tr")).to_have_count(0)
+    if ai:
+        expect(page.locator("#item-form, #draft-notes")).to_have_count(0)
+        expect(page.locator("#ai-items tbody tr")).to_have_count(0)
+    else:
+        for selector in ("#draft-notes", "#item-model", "#item-weight"):
+            expect(page.locator(selector)).to_have_value("")
+        expect(page.locator("#item-quantity")).to_have_value("1")
+        expect(page.locator("#item-form input[type=checkbox]:checked")).to_have_count(0)
+        expect(page.locator("#manual-items tbody tr")).to_have_count(0)
     expect(page.locator("#summary-quantity")).to_have_text("0 unidades")
     expect(page.locator("#summary-tier")).to_have_text("A definir")
     expect(page.locator("#summary-total")).to_have_text(re.compile(r"R\$\s+0,00"))

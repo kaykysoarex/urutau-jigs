@@ -15,6 +15,8 @@ import java.util.List;
 import java.util.stream.IntStream;
 
 import br.com.urutau.jigs.ai.AiDtos.ReviewItem;
+import br.com.urutau.jigs.ai.AiDtos.Workspace;
+import br.com.urutau.jigs.quotes.QuoteDtos.ItemInput;
 import br.com.urutau.jigs.ai.AiInterpreter.Input;
 import br.com.urutau.jigs.ai.AiInterpreter.ProposedItem;
 import br.com.urutau.jigs.ai.AiInterpreter.Result;
@@ -182,6 +184,82 @@ class AiConversationServiceTest {
             "Joana da Luz. Moro na Rua Girassol 772. (11) 98765-4321."))
             .isInstanceOf(ResponseStatusException.class).hasMessageContaining("400");
         verify(interpreter, never()).interpret(any());
+    }
+
+    @Test
+    void combinesStructuredOrdersAndEditsNotesWithoutSendingThemToTheProvider() {
+        var id = conversations.start(session).id();
+        var initial = new Workspace(List.of(new ItemInput(12, 3)), "Embalagem individual.", null, null);
+        var supplemented = conversations.edit(session, id,
+            "• Spinner | 12g | Cor 03 | Qtd: 5\n• Urunaja | 10g | Cor 04 | Qtd: 2\n\n*Total: 7 unidades*", initial);
+        assertThat(supplemented.questions()).isEmpty();
+        assertThat(supplemented.items()).extracting(ReviewItem::quantity).containsExactly(8, 2);
+        var naturalAddition = conversations.edit(session, id, "Adicione 10 Urunaja de 10g na cor 03.", initial);
+        assertThat(naturalAddition.items()).containsExactly(
+            new ReviewItem(12, "Spinner", 12, "03", 3), new ReviewItem(3, "Urunaja", 10, "03", 10));
+        assertThat(naturalAddition.questions()).isEmpty();
+        var observation = conversations.edit(session, id,
+            "Adicione uma observação informando que o cliente prefere receber o pedido na próxima semana.", initial);
+        assertThat(observation.notes()).isEqualTo(
+            "Embalagem individual.\no cliente prefere receber o pedido na próxima semana.");
+        var replaced = conversations.edit(session, id, "Altere a observação para envio na semana seguinte.", initial);
+        assertThat(replaced.notes()).isEqualTo("envio na semana seguinte.");
+        assertThat(replaced.items()).containsExactly(new ReviewItem(12, "Spinner", 12, "03", 3));
+        verify(interpreter, never()).interpret(any());
+    }
+
+    @Test
+    void appliesOnlyProviderDeltasIncludingReplacementAndPreservesUnmentionedItems() {
+        var id = conversations.start(session).id();
+        var initial = new Workspace(List.of(new ItemInput(12, 3), new ItemInput(1, 5), new ItemInput(10, 2),
+            new ItemInput(11, 4)), "Informação local do cliente.", null, null);
+        when(interpreter.interpret(any())).thenReturn(new Result(List.of(
+            new ProposedItem("Spinner", 12, "03", 20),
+            new ProposedItem("Urunaja", 10, "01", 0),
+            new ProposedItem("Urumax G1", 13, "03", 0),
+            new ProposedItem("Urunaja", 10, "04", 7),
+            new ProposedItem("Spinner", 14, "04", 2)
+        ), List.of(), false));
+        var result = conversations.edit(session, id, "Altere a quantidade do Spinner 12g cor 03 para 20, "
+            + "troque as Urunaja cor 01 e Urumax G1 por Urunaja 10g cor 04 e acrescente 2 Spinner 14g cor 04.", initial);
+        assertThat(result.questions()).isEmpty();
+        assertThat(result.items()).containsExactly(
+            new ReviewItem(12, "Spinner", 12, "03", 20), new ReviewItem(11, "Spinner", 12, "01", 4),
+            new ReviewItem(4, "Urunaja", 10, "04", 7), new ReviewItem(16, "Spinner", 14, "04", 2));
+        var captured = ArgumentCaptor.forClass(Input.class);
+        verify(interpreter).interpret(captured.capture());
+        assertThat(captured.getValue().edits()).isTrue();
+        assertThat(captured.getValue().draft().items()).hasSize(4);
+        assertThat(AiOrderProtocol.instructions(captured.getValue()))
+            .contains("somente as mudanças propostas").doesNotContain("Devolva sempre o rascunho completo");
+        assertThat(captured.getValue().toString()).doesNotContain("Informação local");
+    }
+
+    @Test
+    void rejectsPartialAndAmbiguousEditsAndRestoresClarificationContext() {
+        var id = conversations.start(session).id();
+        var initial = new Workspace(List.of(new ItemInput(12, 3)), "", null, null);
+        var valid = new ProposedItem("Spinner", 12, "03", 20);
+        when(interpreter.interpret(any())).thenReturn(
+            new Result(List.of(valid), List.of("Qual cor do Spinner?"), true),
+            new Result(List.of(valid, new ProposedItem("Spinner", 12, "02", 2)), List.of(), false),
+            new Result(List.of(valid), List.of(), false));
+        var original = new ReviewItem(12, "Spinner", 12, "03", 3);
+        var ambiguous = conversations.edit(session, id, "Altere a quantidade do Spinner para 20.", initial);
+        assertThat(ambiguous.items()).containsExactly(original);
+        assertThat(ambiguous.questions()).contains("Qual cor do Spinner?");
+        var resumed = new Workspace(initial.items(), initial.notes(), ambiguous.previous(), ambiguous.questions());
+        var newSession = new MockHttpSession();
+        var newId = conversations.start(newSession).id();
+        var invalid = conversations.edit(newSession, newId, "Cor 03.", resumed);
+        assertThat(invalid.items()).containsExactly(original);
+        assertThat(invalid.questions()).isNotEmpty();
+        var corrected = conversations.edit(newSession, newId, "Use somente a cor 03.", resumed);
+        assertThat(corrected.items()).containsExactly(new ReviewItem(12, "Spinner", 12, "03", 20));
+        var captured = ArgumentCaptor.forClass(Input.class);
+        verify(interpreter, times(3)).interpret(captured.capture());
+        assertThat(captured.getAllValues().get(1).history()).singleElement()
+            .satisfies(turn -> assertThat(turn.message()).contains("Spinner", "20"));
     }
 
     private static VariantView variant(long id, int weight, String color, boolean active) {

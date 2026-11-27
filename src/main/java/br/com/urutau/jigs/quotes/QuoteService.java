@@ -94,7 +94,7 @@ public class QuoteService {
         if (draft != null) {
             draft.requireVersion(request.draftVersion());
             var saved = json.readValue(draft.content, QuoteDraftDtos.Content.class);
-            if (saved.source() == QuoteDraftDtos.Source.IA && !saved.pendingAi().isEmpty()) {
+            if (saved.source() == QuoteDraftDtos.Source.IA && saved.pendingReview()) {
                 throw conflict("Revise os itens da URUTAU AI antes de emitir.");
             }
             Long savedCustomer = saved.customer() == null ? null : saved.customer().id();

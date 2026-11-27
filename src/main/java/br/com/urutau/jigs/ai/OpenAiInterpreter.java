@@ -86,7 +86,7 @@ class OpenAiInterpreter implements AiInterpreter {
         var providerInput = Map.of("role", "user", "content", json.writeValueAsString(input));
         return json.writeValueAsString(Map.of(
             "model", model,
-            "instructions", AiOrderProtocol.INSTRUCTIONS,
+            "instructions", AiOrderProtocol.instructions(input),
             "input", List.of(providerInput),
             "max_output_tokens", 12_000,
             "store", false,

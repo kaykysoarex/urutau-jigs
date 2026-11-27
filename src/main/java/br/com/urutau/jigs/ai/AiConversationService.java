@@ -12,9 +12,12 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import br.com.urutau.jigs.ai.AiDtos.ConversationView;
+import br.com.urutau.jigs.ai.AiDtos.EditView;
+import br.com.urutau.jigs.ai.AiDtos.Workspace;
 import br.com.urutau.jigs.ai.AiDtos.ReviewItem;
 import br.com.urutau.jigs.ai.AiInterpreter.Input;
 import br.com.urutau.jigs.ai.AiInterpreter.Model;
@@ -37,6 +40,11 @@ class AiConversationService {
     private static final int MAX_PROVIDER_MESSAGE_LENGTH = 3000;
     private static final int MAX_QUESTIONS = 8;
     private static final int MAX_QUESTION_LENGTH = 250;
+
+    private static final Pattern NOTE = Pattern.compile(
+        "(?isu)^\\s*(?:(adicione|acrescente|inclua|informe|registre|altere|mude|substitua|defina)"
+        + "\\s+(?:(?:uma|a)\\s+)?)?observa[çc][ãa]o\\s*"
+        + "(?::\\s*|(?:informando(?:\\s+que)?|dizendo(?:\\s+que)?|para|com(?:\\s+o\\s+texto)?)\\s+)(\\S.*)$");
 
     private final AiInterpreter interpreter;
     private final CatalogService catalog;
@@ -89,6 +97,116 @@ class AiConversationService {
             remember(conversation, view, privacy, sanitized, order.isPresent());
             return view;
         }
+    }
+
+    EditView edit(HttpSession session, UUID id, String message, Workspace workspace) {
+        find(session, id);
+        var snapshot = catalogSnapshot();
+        var byId = new LinkedHashMap<Long, Combination>();
+        snapshot.options().forEach((combination, variantId) -> byId.put(variantId, combination));
+        var current = new LinkedHashMap<Long, ReviewItem>();
+        for (var item : workspace.items()) {
+            var variant = byId.get(item.variantId());
+            if (variant == null || current.putIfAbsent(item.variantId(), new ReviewItem(item.variantId(),
+                    variant.model(), variant.weight(), variant.color(), item.quantity())) != null) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "O rascunho contém uma combinação inválida ou indisponível. Confira o catálogo ou transfira o rascunho para o gerador manual.");
+            }
+        }
+        var note = NOTE.matcher(message);
+        if (note.matches()) {
+            String verb = note.group(1);
+            String text = note.group(2).strip();
+            boolean append = verb != null && List.of("adicione", "acrescente", "inclua").contains(verb.toLowerCase(Locale.ROOT));
+            String updated = append && !workspace.notes().isBlank() ? workspace.notes() + "\n" + text : text;
+            if (updated.length() > 1000) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A observação comporta até 1.000 caracteres.");
+            }
+            return new EditView(id, List.copyOf(current.values()), updated, List.of(), "");
+        }
+        var privacy = new MessagePrivacy(snapshot.models());
+        String sanitized = privacy.forProvider(message, workspace.previous() != null && !workspace.previous().isBlank());
+        var order = CatalogOrderParser.parse(message).or(() -> CatalogOrderParser.parseAddition(message));
+        if (order.isPresent()) {
+            var local = validateCatalogOrder(id, order.get(), snapshot);
+            if (local.needsClarification()) {
+                return unresolved(id, current, workspace.notes(), local.questions(), sanitized);
+            }
+            for (var item : local.items()) {
+                var existing = current.get(item.variantId());
+                int total = item.quantity() + (existing == null ? 0 : existing.quantity());
+                if (total > MAX_ITEM_QUANTITY) {
+                    return unresolved(id, current, workspace.notes(),
+                        List.of("A quantidade acumulada ultrapassa o limite por combinação."), sanitized);
+                }
+                current.put(item.variantId(), new ReviewItem(item.variantId(), item.model(), item.weight(), item.color(), total));
+            }
+            return finishEdit(id, workspace, current, sanitized);
+        }
+        if (message.length() > MAX_PROVIDER_MESSAGE_LENGTH || sanitized.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Envie uma instrução comercial de até 3.000 caracteres.");
+        }
+        if (!configured()) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                "Configure o provedor da URUTAU AI para interpretar mensagens livres ou cole um pedido do catálogo.");
+        }
+
+        var history = workspace.previous() == null || workspace.previous().isBlank() ? List.<Turn>of()
+            : List.of(new Turn(privacy.forProvider(workspace.previous(), true), workspace.questions() == null ? List.of()
+                : workspace.questions().stream().map(question -> privacy.forProvider(question, true)).toList()));
+        var baseline = current.values().stream().map(item ->
+            new ProposedItem(item.model(), item.weight(), item.color(), item.quantity())).toList();
+        var edits = interpreter.interpret(new Input(snapshot.models(), history, new Result(baseline, List.of(), false), sanitized, true));
+        if (edits.needsClarification() || !edits.questions().isEmpty() || edits.items().isEmpty()) {
+            var questions = edits.questions().stream().limit(MAX_QUESTIONS).map(MessagePrivacy::stripContactDetails)
+                .filter(question -> !question.isBlank()).map(question -> limit(question, MAX_QUESTION_LENGTH)).toList();
+            return unresolved(id, current, workspace.notes(),
+                questions.isEmpty() ? List.of("Quais itens deseja incluir ou alterar?") : questions, sanitized);
+        }
+
+        var revised = catalogSnapshot();
+        var changed = new LinkedHashMap<>(current);
+        var touched = new LinkedHashSet<Long>();
+        if (edits.items().size() > MAX_ITEMS) {
+            return unresolved(id, current, workspace.notes(), List.of("Divida as alterações em comandos menores."), sanitized);
+        }
+        for (var item : edits.items()) {
+            var variant = activeCombination(item, revised);
+            Long variantId = variant == null ? null : revised.options().get(variant);
+            if (variantId == null || !touched.add(variantId) || item.quantity() < 0 || item.quantity() > MAX_ITEM_QUANTITY
+                    || (item.quantity() == 0 && !current.containsKey(variantId))) {
+                return unresolved(id, current, workspace.notes(),
+                    List.of("Confira as combinações e quantidades solicitadas. Nenhuma alteração foi aplicada."), sanitized);
+            }
+            if (item.quantity() == 0) {
+                changed.remove(variantId);
+            } else {
+                changed.put(variantId, new ReviewItem(variantId, variant.model(), variant.weight(), variant.color(), item.quantity()));
+            }
+        }
+        if (!revised.options().values().containsAll(changed.keySet())) {
+            return unresolved(id, current, workspace.notes(),
+                List.of("O catálogo mudou durante a interpretação. Confira os itens e tente novamente."), sanitized);
+        }
+        return finishEdit(id, workspace, changed, sanitized);
+    }
+
+    private static EditView finishEdit(UUID id, Workspace workspace, Map<Long, ReviewItem> items, String context) {
+        if (items.size() > MAX_ITEMS) {
+            return new EditView(id, List.of(), workspace.notes(),
+                List.of("O orçamento aceita até " + MAX_ITEMS + " combinações."), limit(context, MAX_PROVIDER_MESSAGE_LENGTH));
+        }
+        return new EditView(id, List.copyOf(items.values()), workspace.notes(), List.of(), "");
+    }
+
+    private static EditView unresolved(UUID id, Map<Long, ReviewItem> current, String notes, List<String> questions, String context) {
+        return new EditView(id, List.copyOf(current.values()), notes, questions.stream().limit(MAX_QUESTIONS)
+            .map(question -> limit(question, MAX_QUESTION_LENGTH)).toList(), limit(context, MAX_PROVIDER_MESSAGE_LENGTH));
+    }
+
+    private static String limit(String value, int length) {
+        return value.length() <= length ? value : value.substring(0, length);
     }
 
     private ConversationView interpretFreeText(UUID id, Input input) {

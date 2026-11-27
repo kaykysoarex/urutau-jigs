@@ -302,7 +302,23 @@ function quotePage(page) {
   return page === "manual" || page === "ai";
 }
 
+let manualEditor;
+
+function mountManualEditor(visible) {
+  if (!visible) {
+    manualEditor?.remove();
+    return;
+  }
+  if (byId("item-form")) return;
+  const firstMount = !manualEditor;
+  if (firstMount) manualEditor = byId("manual-editor-template").content.firstElementChild.cloneNode(true);
+  byId("manual-editor-slot").append(manualEditor);
+  if (firstMount) bindManualEditor();
+}
+
 function mountQuoteWorkspace(page) {
+  mountManualEditor(page === "manual");
+  quoteCustomerPicker?.setRegistrationAllowed(page === "manual");
   const layout = byId("manual-layout");
   const host = byId(page === "ai" ? "ai-workspace" : "manual-workspace");
   if (layout.parentElement !== host) host.append(layout);
@@ -390,6 +406,7 @@ async function loadCatalog() {
 }
 
 function renderManualCatalog(pick = {}) {
+  if (!byId("item-form")) return;
   const models = activeProducts();
   const modelSelect = byId("item-model");
   const weightSelect = byId("item-weight");
@@ -528,6 +545,7 @@ function resetItemEditor() {
   state.editingItem = null;
   state.editingQuantity = null;
   state.selectedColors.clear();
+  if (!byId("item-form")) return;
   byId("item-quantity").value = "1";
   byId("item-add").querySelector("span").textContent = "Adicionar ao orçamento";
   byId("item-cancel").hidden = true;
@@ -606,29 +624,39 @@ function removeItem(id) {
 }
 
 function renderManualRows() {
-  const container = byId("manual-items");
-  if (!state.draft.length) {
-    container.replaceChildren(emptyState("Nenhum item adicionado", "Selecione uma combinação no formulário acima para começar.", "boxes"));
+  const target = byId("manual-items");
+  if (target) renderQuoteRows(target, state.draft, state.preview, true);
+  else renderAIItems();
+}
+
+function renderQuoteRows(container, items, preview, editable) {
+  if (!items.length) {
+    container.replaceChildren(emptyState("Nenhum item adicionado",
+      editable ? "Selecione uma combinação no formulário acima para começar." : "Envie uma instrução à URUTAU AI.", "boxes"));
     return;
   }
-  const values = new Map((state.preview?.items ?? []).map(item => [item.variantId, item]));
-  const rows = state.draft.map(item => {
+  const values = new Map((preview?.items ?? []).map(item => [item.variantId, item]));
+  const rows = items.map(item => {
     const priced = values.get(item.variantId);
+    const cells = [
+      [captioned(priced?.model ?? item.model, `${item.weight} g · Cor ${item.color}${item.active === false ? " · Indisponível" : ""}`)],
+      [numberFormat.format(item.quantity), "numerical"],
+      [priced?.unitPrice != null ? moneyFormat.format(priced.unitPrice) : "—", `numerical${priced && priced.unitPrice == null ? " cell-missing" : ""}`],
+      [priced?.subtotal != null ? moneyFormat.format(priced.subtotal) : "—", "numerical"]
+    ];
+    if (!editable) return cells;
     const controls = element("div", "table-row-actions");
     const edit = action(`Editar ${item.model}, ${item.weight} g, cor ${item.color}`, "edit", () => editItem(item.variantId));
     const remove = action(`Remover ${item.model}, ${item.weight} g, cor ${item.color}`, "trash", () => removeItem(item.variantId), "danger");
     edit.disabled = state.issueBusy;
     remove.disabled = state.issueBusy;
     controls.append(edit, remove);
-    return [
-      [captioned(priced?.model ?? item.model, `${item.weight} g · Cor ${item.color}${item.active === false ? " · Indisponível" : ""}`)],
-      [numberFormat.format(item.quantity), "numerical"],
-      [priced?.unitPrice != null ? moneyFormat.format(priced.unitPrice) : "—", `numerical${priced && priced.unitPrice == null ? " cell-missing" : ""}`],
-      [priced?.subtotal != null ? moneyFormat.format(priced.subtotal) : "—", "numerical"],
-      [controls, "cell-actions"]
-    ];
+    cells.push([controls, "cell-actions"]);
+    return cells;
   });
-  container.replaceChildren(table("Itens do orçamento", [["Isca"], ["Qtd.", "numerical"], ["Unitário", "numerical"], ["Subtotal", "numerical"], ["Ações", "cell-actions"]], rows, "quote-items-table"));
+  const headers = [["Isca"], ["Qtd.", "numerical"], ["Unitário", "numerical"], ["Subtotal", "numerical"]];
+  if (editable) headers.push(["Ações", "cell-actions"]);
+  container.replaceChildren(table(editable ? "Itens do orçamento" : "Itens interpretados", headers, rows, "quote-items-table"));
 }
 
 function draftItems() {
@@ -671,7 +699,7 @@ function missingPrices() {
 }
 
 function hasUnreviewedInterpretation() {
-  return draftUi.source === "IA" && (draftUi.pendingAi.length > 0 || Boolean(state.conversation?.needsClarification));
+  return draftUi.source === "IA" && (hasAiProposal() || draftUi.aiQuestions.length > 0);
 }
 
 function renderSummary() {
@@ -980,8 +1008,10 @@ function generateRequestId() {
 function setQuoteBusy(busy) {
   state.issueBusy = busy;
   for (const control of byId("client-form").elements) control.disabled = busy;
-  byId("draft-notes").disabled = busy;
-  byId("item-cancel").disabled = busy;
+  for (const id of ["draft-notes", "item-cancel"]) {
+    const control = byId(id);
+    if (control) control.disabled = busy;
+  }
   renderManualCatalog();
   renderManualRows();
   renderSummary();
@@ -1453,6 +1483,7 @@ function appendChat(text, role = "assistant", questions = []) {
 function clearOrderConversation() {
   state.conversation = null;
   byId("chat-message").value = "";
+  byId("ai-change-message").value = "";
   initializeChat();
   renderAIControl();
 }
@@ -1488,136 +1519,126 @@ async function checkAI() {
 }
 
 function renderAIControl() {
-  const blocked = state.aiBusy || !state.aiOnline;
-  byId("chat-message").disabled = !state.aiOnline;
-  byId("chat-send").disabled = blocked;
+  const blocked = state.aiBusy || state.issueBusy || !state.aiOnline;
+  for (const id of ["chat-message", "ai-change-message", "chat-send", "ai-change-send", "ai-new"]) byId(id).disabled = blocked;
   byId("chat-send").querySelector("span").textContent = state.aiBusy ? "Processando…" : "Interpretar com URUTAU AI";
-  byId("ai-new").disabled = blocked;
+  byId("ai-change-send").querySelector("span").textContent = state.aiBusy ? "Processando…" : "Interpretar alteração";
   renderAIItems();
 }
 
-const emptyAIItems = [];
-let renderedAIItems;
+function hasAiProposal() {
+  return draftUi.aiNotes !== null || draftUi.pendingAi.length > 0;
+}
 
-function renderAIItems() {
-  const items = state.conversation?.items ?? emptyAIItems;
-  byId("ai-review").disabled = !items.length || state.conversation?.needsClarification || state.aiBusy || state.issueBusy;
-  window.urutauPwa?.renderUpdate();
-  if (items === renderedAIItems) return;
-  renderedAIItems = items;
-  const quantity = items.reduce((sum, item) => sum + item.quantity, 0);
-  byId("ai-count").textContent = items.length ? `${unitLabel(quantity)} · ${items.length} ${items.length === 1 ? "combinação" : "combinações"}` : "Nenhum item identificado";
-  const container = byId("ai-items");
-  container.replaceChildren();
-  if (items.length) {
-    const list = element("ul", "ai-item-list");
-    items.forEach(item => {
-      const row = element("li");
-      const details = element("div");
-      details.append(element("strong", "", item.model), element("small", "", `${item.weight} g · Cor ${item.color}`));
-      row.append(details, element("span", "tier-pill", unitLabel(item.quantity)));
-      list.append(row);
-    });
-    container.append(list);
+let proposedEstimate = null;
+let proposalRevision = 0;
+
+async function updateProposalEstimate() {
+  const revision = ++proposalRevision;
+  proposedEstimate = null;
+  renderAIItems();
+  if (!hasAiProposal() || !draftUi.pendingAi.length) return;
+  const items = draftUi.pendingAi.map(({ variantId, quantity }) => ({ variantId, quantity }));
+  try {
+    const estimate = await api("/api/quotes/preview", { method: "POST", body: { items } });
+    if (revision === proposalRevision) {
+      proposedEstimate = estimate;
+      renderAIItems();
+    }
+  } catch {
+    // Reviewed estimates and final issuance still use the authoritative quote endpoint.
   }
 }
 
-async function startConversation() {
+function renderAIItems() {
+  if (draftUi.source !== "IA") return;
+  const proposed = hasAiProposal();
+  const items = proposed ? draftUi.pendingAi : state.draft;
+  const quantity = items.reduce((sum, item) => sum + item.quantity, 0);
+  byId("ai-count").textContent = proposed ? `Proposta para revisão · ${unitLabel(quantity)}`
+    : items.length ? unitLabel(quantity) : "Nenhum item identificado";
+  renderQuoteRows(byId("ai-items"), items, proposed ? proposedEstimate : state.preview, false);
+  const notes = proposed ? draftUi.aiNotes ?? draftUi.notes : draftUi.notes;
+  byId("ai-notes-section").hidden = !notes;
+  byId("ai-notes").textContent = notes;
+  const pending = proposed || draftUi.aiQuestions.length > 0;
+  byId("ai-review-actions").hidden = !pending;
+  byId("ai-review").hidden = !proposed;
+  byId("ai-review").disabled = !proposed || draftUi.aiQuestions.length > 0 || state.aiBusy || state.issueBusy;
+  byId("ai-discard").disabled = state.aiBusy || state.issueBusy;
+  window.urutauPwa?.renderUpdate();
+}
+
+function discardAiProposal() {
+  if (state.aiBusy || state.issueBusy || state.issueConfirmation || draftUi.busy) return;
+  draftUi.pendingAi = [];
+  draftUi.aiNotes = null;
+  draftUi.aiQuestions = [];
+  draftUi.aiPrevious = "";
+  void updateProposalEstimate();
+  renderSummary();
+  queueDraftSave();
+}
+
+function startConversation() {
   if (state.aiBusy || state.issueBusy || state.issueConfirmation || draftUi.busy || draftUi.switching || !state.aiOnline) return;
-  if (hasUnreviewedInterpretation() && !window.confirm("Iniciar outra interpretação e descartar as sugestões ainda em revisão?")) return;
-  const field = byId("chat-message");
-  const draft = field.value;
-  state.aiBusy = true;
-  renderAIControl();
-  try {
-    state.conversation = await api("/api/ai/conversations", { method: "POST" });
-    if (draftUi.pendingAi.length) {
-      draftUi.pendingAi = [];
-      queueDraftSave();
-    }
-    if (field.value === draft) field.value = "";
-    initializeChat();
-    renderSummary();
-  } catch (error) {
-    appendChat(error.message, "error");
-  } finally {
-    state.aiBusy = false;
-    renderAIControl();
-  }
+  if (hasUnreviewedInterpretation() && !window.confirm("Iniciar outra interpretação e descartar a proposta em revisão?")) return;
+  clearOrderConversation();
+  discardAiProposal();
 }
 
 async function sendMessage(event) {
   event.preventDefault();
   if (state.aiBusy || state.issueBusy || state.issueConfirmation || draftUi.busy || draftUi.switching || !state.aiOnline) return;
-  const field = byId("chat-message");
-  const draft = field.value;
-  const message = draft.trim();
+  const editing = event.currentTarget.id === "ai-change-form";
+  const field = byId(editing ? "ai-change-message" : "chat-message");
+  const message = field.value.trim();
   if (!message) return;
   appendChat(message, "admin");
   field.value = "";
   state.aiBusy = true;
   renderAIControl();
   const progress = appendChat("Interpretando a mensagem…");
+  const basis = hasAiProposal() ? draftUi.pendingAi : state.draft;
+  const workspace = { items: basis.map(({ variantId, quantity }) => ({ variantId, quantity })),
+    notes: draftUi.aiNotes ?? draftUi.notes, previous: draftUi.aiPrevious, questions: draftUi.aiQuestions };
   try {
     if (!state.conversation) state.conversation = await api("/api/ai/conversations", { method: "POST" });
-    state.conversation = await api(`/api/ai/conversations/${encodeURIComponent(state.conversation.id)}/messages`, { method: "POST", body: { message } });
-    if (!state.conversation.needsClarification && state.conversation.items.length) {
-      draftUi.pendingAi = state.conversation.items.map(item => ({ ...item }));
-      queueDraftSave();
-    }
-    progress.remove();
-    if (state.conversation.needsClarification) {
-      appendChat("Preciso esclarecer alguns detalhes com você.", "assistant", state.conversation.questions);
+    const response = await api(`/api/ai/conversations/${encodeURIComponent(state.conversation.id)}/messages`,
+      { method: "POST", body: { message, workspace } });
+    draftUi.aiQuestions = response.questions;
+    draftUi.aiPrevious = response.previous;
+    if (response.questions.length) {
+      appendChat("Preciso esclarecer alguns detalhes antes de alterar o orçamento.", "assistant", response.questions);
     } else {
-      appendChat(state.conversation.items.length ? "As iscas foram identificadas. Você já pode revisar os itens no orçamento." : "Ainda não há itens para revisar. Informe os produtos que deseja incluir.");
+      draftUi.pendingAi = response.items;
+      draftUi.aiNotes = response.notes;
+      appendChat("Confira a proposta em Itens interpretados e confirme em Revisar orçamento.");
+      void updateProposalEstimate();
     }
   } catch (error) {
-    progress.remove();
-    field.value = field.value ? `${draft}\n\n${field.value}` : draft;
+    field.value = message;
     if (error.status === 404) state.conversation = null;
     appendChat(error.message, "error");
   } finally {
+    progress.remove();
     state.aiBusy = false;
     renderAIControl();
     renderSummary();
-    updateDraftStatus();
+    queueDraftSave();
   }
 }
 
 function reviewConversation() {
-  if (state.conversation?.needsClarification || !state.conversation?.items.length) return;
-  reviewItems(state.conversation.items);
-}
-
-function reviewItems(items) {
-  if (state.aiBusy || state.issueBusy || state.issueConfirmation || draftUi.busy || !items.length) return;
-  if (state.draft.length && !window.confirm("Substituir os itens do orçamento atual pelos itens da conversa? Os dados do cliente serão mantidos.")) return;
-  state.draft = items.map(item => ({ ...item }));
-  draftUi.pendingAi = [];
-  resetItemEditor();
+  if (!hasAiProposal() || draftUi.aiQuestions.length || state.aiBusy || state.issueBusy || state.issueConfirmation || draftUi.busy) return;
+  state.draft = draftUi.pendingAi.map(item => ({ ...item }));
+  if (draftUi.aiNotes !== null) draftUi.notes = draftUi.aiNotes;
+  discardAiProposal();
   draftChanged();
-  byId("items-heading").scrollIntoView({ block: "start" });
-  toast("Itens incluídos. Confira o orçamento antes de emitir.");
+  toast("Proposta aplicada. Confira o orçamento antes de emitir.");
 }
 
-function bindEvents() {
-  document.querySelectorAll("svg.icon").forEach(node => { node.setAttribute("aria-hidden", "true"); });
-  document.querySelector(".skip-link").addEventListener("click", event => {
-    event.preventDefault();
-    byId("main").focus();
-  });
-  addEventListener("hashchange", navigate);
-  byId("nav-toggle").addEventListener("click", () => navOpen(byId("nav-toggle").getAttribute("aria-expanded") === "false"));
-  for (const id of ["nav-overlay", "nav-close"]) {
-    byId(id).addEventListener("click", () => navOpen(false, true));
-  }
-  byId("sidebar").addEventListener("click", event => {
-    const routeLink = event.target.closest("a[href^='#']");
-    if (routeLink && byId("sidebar").classList.contains("is-open")) navOpen(false, routeLink.hash === location.hash);
-  });
-  drawerLayout.addEventListener("change", () => navOpen(false));
-  addEventListener("keydown", drawerKeydown);
-  byId("client-form").addEventListener("submit", event => event.preventDefault());
+function bindManualEditor() {
   byId("item-model").addEventListener("change", () => {
     clearDraftEditor();
     state.selectedColors.clear();
@@ -1650,6 +1671,27 @@ function bindEvents() {
   });
   byId("item-form").addEventListener("submit", addItems);
   byId("item-cancel").addEventListener("click", resetItemEditor);
+  bindManualDraftEvents();
+}
+
+function bindEvents() {
+  document.querySelectorAll("svg.icon").forEach(node => { node.setAttribute("aria-hidden", "true"); });
+  document.querySelector(".skip-link").addEventListener("click", event => {
+    event.preventDefault();
+    byId("main").focus();
+  });
+  addEventListener("hashchange", navigate);
+  byId("nav-toggle").addEventListener("click", () => navOpen(byId("nav-toggle").getAttribute("aria-expanded") === "false"));
+  for (const id of ["nav-overlay", "nav-close"]) {
+    byId(id).addEventListener("click", () => navOpen(false, true));
+  }
+  byId("sidebar").addEventListener("click", event => {
+    const routeLink = event.target.closest("a[href^='#']");
+    if (routeLink && byId("sidebar").classList.contains("is-open")) navOpen(false, routeLink.hash === location.hash);
+  });
+  drawerLayout.addEventListener("change", () => navOpen(false));
+  addEventListener("keydown", drawerKeydown);
+  byId("client-form").addEventListener("submit", event => event.preventDefault());
   const previewDialog = byId("preview-pdf-dialog");
   byId("quote-preview-pdf").addEventListener("click", () => void showPdfPreview());
   byId("preview-pdf-close").addEventListener("click", () => previewDialog.close());
@@ -1706,7 +1748,9 @@ function bindEvents() {
   byId("settings-form").addEventListener("submit", saveSettings);
   byId("ai-new").addEventListener("click", () => void startConversation());
   byId("chat-form").addEventListener("submit", sendMessage);
+  byId("ai-change-form").addEventListener("submit", sendMessage);
   byId("ai-review").addEventListener("click", reviewConversation);
+  byId("ai-discard").addEventListener("click", discardAiProposal);
   bindDraftEvents();
   bindOrderEvents();
   bindCustomerEvents();
@@ -1730,8 +1774,8 @@ async function loadSession() {
 function hasUnfinishedQuote() {
   return state.issueBusy || draftIsDirty() || state.draft.length > 0 || state.editingItem !== null || state.selectedColors.size > 0
     || Object.values(readQuoteClient(byId("client-form"))).some(Boolean)
-    || assistantHasConversation() || state.aiBusy || Boolean(state.conversation?.items.length || state.conversation?.needsClarification
-      || byId("chat-message").value.trim());
+    || assistantHasConversation() || state.aiBusy || hasUnreviewedInterpretation()
+    || Boolean(byId("chat-message").value.trim() || byId("ai-change-message").value.trim());
 }
 
 function initialize() {

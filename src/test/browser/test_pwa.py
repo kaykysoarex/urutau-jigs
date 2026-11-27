@@ -19,8 +19,8 @@ from test_quote_confirmation import assert_clean_form
 
 
 WORKER = "/service-worker.js"
-CACHE = "urutau-jigs-pwa-0.2.3"
-NEXT_CACHE = "urutau-jigs-pwa-0.2.3-browser-next"
+CACHE = "urutau-jigs-pwa-0.2.4"
+NEXT_CACHE = "urutau-jigs-pwa-0.2.4-browser-next"
 UNRELATED_CACHE = "qa-cache-fora-da-pwa"
 PNG_ICONS = {
     "/icons/icon-192.png": 192,

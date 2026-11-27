@@ -472,7 +472,10 @@ input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--brand); 
 .assistant-panel textarea { font-size: 16px; }
 .assistant-context { padding: .45rem 1rem; color: var(--muted); font-size: .9rem; }
 .assistant-panel #assistant-feedback:empty { display: none; }
-#quote-interpretation .ai-grid { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+.manual-editor, .ai-quote-editor { display: grid; gap: 1.1rem; min-width: 0; }
+#manual-editor-slot:empty { display: none; }
+#ai-notes { white-space: pre-wrap; overflow-wrap: anywhere; }
+#ai-review-actions:not([hidden]) { margin-top: .85rem; }
 #quote-interpretation .chat-log { min-height: 7rem; max-height: 18rem; overflow-wrap: anywhere; }
 .main-content { padding-bottom: 5rem; }
 @media (min-width: 960px) {

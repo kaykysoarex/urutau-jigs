@@ -125,11 +125,13 @@
                 </details>
                 <div id="quote-customer-link" class="quote-customer-selector" hidden></div>
                 <label class="field"><span>Nome do cliente <span class="required" aria-hidden="true">*</span></span><input id="client-name" name="name" maxlength="120" placeholder="Nome ou razão social" autocapitalize="words" required></label>
-                <label class="field"><span>Telefone</span><input id="client-phone" type="tel" inputmode="tel" name="phone" maxlength="40" placeholder="(00) 00000-0000"></label>
+                <label class="field"><span>Telefone/WhatsApp</span><input id="client-phone" type="tel" inputmode="tel" name="phone" maxlength="40" placeholder="(00) 00000-0000"></label>
               </form>
             </section>
 
-            <div id="quote-interpretation" hidden></div>
+            <div id="quote-interpretation" hidden></div><div id="manual-editor-slot"></div></div>
+            <template id="manual-editor-template">
+            <div class="manual-editor">
             <section class="panel items-panel" aria-labelledby="items-heading">
               <div class="section-heading">
                 <span class="section-icon"><svg class="icon"><use href="/icons.svg#boxes"/></svg></span>
@@ -175,7 +177,8 @@
             <section class="panel panel-body" aria-label="Observações do orçamento">
               <label class="field"><span>Observações do rascunho</span><textarea id="draft-notes" rows="2" maxlength="1000"></textarea></label>
             </section>
-          </div>
+            </div>
+            </template>
 
           <aside class="quote-summary panel" aria-labelledby="quote-summary-title">
             <div class="summary-heading">
@@ -209,20 +212,34 @@
           <button id="ai-new" class="button secondary" type="button"><svg class="icon"><use href="/icons.svg#plus"/></svg>Nova conversa</button>
         </div>
         <div id="ai-workspace"></div>
-        <div id="ai-interpreter" class="ai-grid">
+        <div id="ai-interpreter" class="ai-quote-editor">
           <section class="panel chat-panel" aria-label="Conversa com a URUTAU AI">
             <div class="section-heading"><span class="section-icon"><svg class="icon"><use href="/icons.svg#sparkles"/></svg></span><div><h2>Interpretação do pedido</h2></div></div>
             <div id="chat-log" class="chat-log" role="log" aria-label="Mensagens da conversa" aria-live="polite" aria-relevant="additions" tabindex="0"></div>
             <form id="chat-form" class="chat-form">
               <div id="ai-warning" class="notice ai-warning" role="status" hidden></div>
-              <label class="field"><span>Mensagem do pedido ou resposta</span><textarea id="chat-message" rows="4" placeholder="Cole a mensagem do pedido ou responda às dúvidas do assistente." autocomplete="off" required disabled></textarea></label>
+              <label class="field"><span>Mensagem do pedido ou resposta</span><textarea id="chat-message" rows="4" maxlength="12000" placeholder="Cole a mensagem do pedido ou responda às dúvidas do assistente." autocomplete="off" required disabled></textarea></label>
               <div class="chat-actions"><small>Remova nomes, telefones e endereços das mensagens copiadas.</small><button id="chat-send" class="button primary" type="submit" disabled><svg class="icon"><use href="/icons.svg#send"/></svg><span>Interpretar com URUTAU AI</span></button></div>
             </form>
           </section>
           <aside class="panel" aria-labelledby="ai-items-heading">
-            <div class="section-heading"><span class="section-icon"><svg class="icon"><use href="/icons.svg#list"/></svg></span><div><h2 id="ai-items-heading">Itens identificados</h2><p id="ai-count">Nenhum item identificado</p></div></div>
-            <div class="panel-body"><div id="ai-items"></div><button id="ai-review" class="button primary block" type="button" disabled>Revisar orçamento</button></div>
+            <div class="section-heading"><span class="section-icon"><svg class="icon"><use href="/icons.svg#list"/></svg></span><div><h2 id="ai-items-heading">Itens interpretados</h2><p id="ai-count">Nenhum item identificado</p></div></div>
+            <div class="panel-body">
+              <div id="ai-items" aria-live="polite"></div>
+              <div id="ai-notes-section" hidden><h3>Observações do rascunho</h3><p id="ai-notes"></p></div>
+              <div id="ai-review-actions" class="draft-actions" hidden>
+                <button id="ai-review" class="button primary" type="button" disabled>Revisar orçamento</button>
+                <button id="ai-discard" class="button secondary" type="button">Descartar proposta</button>
+              </div>
+            </div>
           </aside>
+          <section class="panel" aria-labelledby="ai-change-heading">
+            <div class="section-heading"><span class="section-icon"><svg class="icon"><use href="/icons.svg#edit"/></svg></span><h2 id="ai-change-heading">Solicitar alterações à IA</h2></div>
+            <form id="ai-change-form" class="chat-form">
+              <label class="field"><span>Instrução para alterar o orçamento</span><textarea id="ai-change-message" rows="3" maxlength="3000" placeholder="Ex.: Retire todas as Urumax G1." required disabled></textarea></label>
+              <div class="chat-actions"><button id="ai-change-send" class="button primary" type="submit" disabled><svg class="icon"><use href="/icons.svg#send"/></svg><span>Interpretar alteração</span></button></div>
+            </form>
+          </section>
         </div>
       </section>
 

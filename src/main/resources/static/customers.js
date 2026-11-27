@@ -139,6 +139,15 @@ function mountCustomerPicker(host, options) {
   }
   return {
     setCurrent, checkPhone,
+    setRegistrationAllowed(allowed) {
+      register.wrapper.hidden = !allowed;
+      if (!allowed) {
+        register.input.checked = false;
+        void checkPhone();
+      }
+      byId("quote-customer-details").querySelector("summary").textContent =
+        allowed ? "Vincular ou cadastrar cliente" : "Buscar cliente cadastrado";
+    },
     selection() {
       if (chosen) return { id: chosen.id };
       return register.input.checked ? { register: true, allowSharedPhone: shared.input.checked } : null;
