@@ -49,11 +49,15 @@ class CommercialOrderService {
         Boolean delivered = fulfillment == null ? null : fulfillment == OrderDtos.Fulfillment.ENTREGUE;
         var found = quotes.commercialList(fulfillment == null ? status : CONFIRMADO, search, number, newest,
                 delivered, PageRequest.of(page, 18));
+        return new OrderDtos.Listing(found.getContent(), page, found.getTotalPages(), counts());
+    }
+
+    @Transactional(readOnly = true)
+    OrderDtos.Counts counts() {
         long confirmed = quotes.countByStatus(CONFIRMADO);
         long deliveredCount = orders.countByQuoteStatusAndDeliveredAtIsNotNull(CONFIRMADO);
-        var counts = new OrderDtos.Counts(quotes.countByStatus(PENDENTE), confirmed,
+        return new OrderDtos.Counts(quotes.countByStatus(PENDENTE), confirmed,
                 quotes.countByStatus(CANCELADO), confirmed - deliveredCount, deliveredCount);
-        return new OrderDtos.Listing(found.getContent(), page, found.getTotalPages(), counts);
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
