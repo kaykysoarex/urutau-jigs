@@ -43,7 +43,7 @@ function newDraftSync(id = generateRequestId(), version = null) {
 }
 
 function draftIsDirty(draft = draftUi.current) {
-  if (!draft || state.issueConfirmation) return false;
+  if (!draft || draft !== draftUi.current || state.issueConfirmation) return false;
   const content = draftContent();
   return JSON.stringify(content) !== draft.synced && (draft.version !== null || meaningfulDraft(content));
 }
@@ -77,13 +77,15 @@ function updateDraftStatus() {
 }
 
 function queueDraftSave() {
-  if (!state.session || state.issueConfirmation) return;
+  if (!state.session || state.issueBusy || state.issueConfirmation) return;
   if (!draftUi.current && meaningfulDraft(draftContent())) draftUi.current = newDraftSync();
   const draft = draftUi.current;
   if (draft) {
     clearTimeout(draft.timer);
     if (draftIsDirty(draft) && !draft.discarding && !draft.conflict && !draftOffline()) {
-      draft.timer = setTimeout(() => void flushDraft(false), 1000);
+      draft.timer = setTimeout(() => {
+        if (draftUi.current === draft && !state.issueBusy) void flushDraft(false);
+      }, 1000);
     }
   }
   updateDraftStatus();
@@ -111,9 +113,11 @@ async function flushDraft(saveAll = true) {
   draft.saving = (async () => {
     try {
       const saved = await api(`${draftApiPath}/${draft.id}`, { method: "PUT", body: { version: draft.version, content } });
-      draft.version = saved.version;
-      draft.synced = snapshot;
-      rememberDraft(saved);
+      if (draftUi.current === draft) {
+        draft.version = saved.version;
+        draft.synced = snapshot;
+        rememberDraft(saved);
+      }
     } catch (error) {
       draft.conflict = error.status === 409 || error.status === 404;
       draft.error = !draft.conflict;
@@ -241,6 +245,19 @@ function resetDraftWorkspace() {
   resetItemEditor();
   updateDraftStatus();
   void updatePreview();
+}
+
+function completeDraftIssue() {
+  const id = draftUi.current?.id;
+  if (id) {
+    for (const [source, parkedId] of draftUi.parked) {
+      if (parkedId === id) draftUi.parked.delete(source);
+    }
+    forgetDraft(id);
+  }
+  resetDraftWorkspace();
+  if (draftUi.source === "IA") clearOrderConversation();
+  formFeedback("draft-list-error", "");
 }
 
 function hydrateDraft(opened) {
@@ -440,7 +457,7 @@ function bindDraftEvents() {
   addEventListener("offline", updateDraftStatus);
   addEventListener("urutau:offline", updateDraftStatus);
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden && draftIsDirty()) void flushDraft(false);
+    if (document.hidden && !state.issueBusy && draftIsDirty()) void flushDraft(false);
   });
   addEventListener("beforeunload", event => {
     if (draftIsDirty()) {

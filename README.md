@@ -23,12 +23,12 @@ O JAR distribuído requer Java 21. Para compilar o código-fonte, instale també
            [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2], 'Process')
        }
    }
-   java -jar ..\urutau-jigs-0.2.2.jar
+   java -jar ..\urutau-jigs-0.2.3.jar
    ```
 
 3. Abra [o painel local](http://127.0.0.1:8080/) e entre com uma das contas. Confira os valores em **Tabela de preços**. Os preços iniciais do catálogo oficial são cadastrados pelo Flyway. O H2 guarda os registros em `data/` da pasta onde a aplicação foi iniciada.
 
-Use `mvn spring-boot:run` para executar pelo código-fonte. Use `mvn clean verify` para executar os testes e gerar o JAR em `target/urutau-jigs-0.2.2.jar`. Em Linux, exporte as mesmas variáveis no ambiente do processo e execute o JAR com Java 21.
+Use `mvn spring-boot:run` para executar pelo código-fonte. Use `mvn clean verify` para executar os testes e gerar o JAR em `target/urutau-jigs-0.2.3.jar`. Em Linux, exporte as mesmas variáveis no ambiente do processo e execute o JAR com Java 21.
 
 ## Instalar o URUTAU JIGS como aplicativo
 
@@ -145,7 +145,7 @@ O gerador salva após cerca de um segundo de inatividade. São salvos os dados d
 
 No gerador, use **Continuar o último orçamento** ou **Visualizar rascunhos**. Cada administrador acessa seus próprios rascunhos, inclusive em outro dispositivo após entrar na mesma conta. **Iniciar novo orçamento** preserva os rascunhos anteriores. Para remover um deles, use **Descartar** e confirme. Se dois dispositivos editarem o mesmo rascunho, escolha **Carregar versão mais recente** ou **Salvar em outro rascunho** para preservar sua edição.
 
-Ao recuperar a edição, o sistema Java usa os preços do catálogo e o limite comercial vigentes. O gerador sinaliza mudanças nas condições e combinações indisponíveis para revisão. Os rascunhos ficam fora do histórico, e a numeração comercial é atribuída na emissão definitiva. Uma emissão confirmada encerra o rascunho.
+Ao recuperar a edição, o sistema Java usa os preços do catálogo e o limite comercial vigentes. O gerador sinaliza mudanças nas condições e combinações indisponíveis para revisão. Os rascunhos ficam fora do histórico, e a numeração comercial é atribuída na emissão definitiva. Uma emissão confirmada encerra o rascunho e limpa o gerador de origem imediatamente. O modal continua exibindo o orçamento emitido. Se a resposta for inconclusiva, os dados ficam no formulário e **Tentar confirmar emissão** repete a mesma solicitação para recuperar o resultado com segurança. A prévia mantém a edição atual.
 
 Em caso de perda da conexão, mantenha o aplicativo aberto até a sincronização. A tentativa é retomada quando a rede volta e também pode ser acionada em **Tentar novamente**. Alterações pendentes ficam em memória e podem ser perdidas se você fechar o aplicativo. O sistema armazena os rascunhos no MySQL do Railway ou no H2 local. A migração Flyway V6 é aplicada na inicialização e não exige novas variáveis de ambiente.
 
@@ -201,7 +201,7 @@ O provedor de IA interpreta mensagens livres e ajuda a esclarecer trechos ambíg
    GEMINI_MODEL=gemini-3.5-flash-lite
    ```
 
-3. Pare a execução anterior. Na mesma pasta `urutau-jigs`, recarregue o `.env` com o trecho de PowerShell da seção de instalação e execute `java -jar ..\urutau-jigs-0.2.2.jar`. A mesma pasta de trabalho mantém o acesso a `data/urutau.mv.db` quando o H2 padrão estiver em uso. Em **Comercial**, abra **Novo orçamento com IA** e interprete um pedido de teste como `3 Spinner 12g cor 03`.
+3. Pare a execução anterior. Na mesma pasta `urutau-jigs`, recarregue o `.env` com o trecho de PowerShell da seção de instalação e execute `java -jar ..\urutau-jigs-0.2.3.jar`. A mesma pasta de trabalho mantém o acesso a `data/urutau.mv.db` quando o H2 padrão estiver em uso. Em **Comercial**, abra **Novo orçamento com IA** e interprete um pedido de teste como `3 Spinner 12g cor 03`.
 
 O modelo padrão, inclusive com `GEMINI_MODEL` em branco, é o Gemini 3.5 Flash-Lite estável. O back-end usa a operação oficial `generateContent` com Structured Outputs. Os limites de uso dependem do projeto no Google. Se a cota acabar ou o serviço falhar, a interface informa o erro e o gerador manual continua disponível. [Modelo e modalidade gratuita](https://aistudio.google.com/docs/models/gemini-3.5-flash-lite#pricing) · [Limites de uso](https://aistudio.google.com/docs/rate-limits)
 
@@ -215,7 +215,7 @@ Cole somente a parte da mensagem que descreve os itens. Informe nome, telefone, 
 
 A conversa é vinculada à sessão administrativa, e **Nova conversa** cria outro contexto. O rascunho e as perguntas relevantes acompanham as mensagens seguintes até o encerramento ou expiração da sessão. Reiniciar o aplicativo inicia uma nova sessão.
 
-As sugestões são validadas contra o catálogo e encaminhadas ao formulário manual quando estão prontas para revisão. A emissão acontece após a aprovação do administrador. O gerador manual funciona sem chave de IA e durante indisponibilidades do provedor.
+As sugestões são validadas contra o catálogo e apresentadas no editor do gerador com IA quando estão prontas para revisão. A emissão acontece após a aprovação do administrador. O gerador manual funciona sem chave de IA e durante indisponibilidades do provedor.
 
 ## Estrutura
 
@@ -239,15 +239,15 @@ Os testes de navegador executam o JAR gerado por `mvn clean verify` com um H2 de
 ```powershell
 python -m pip install -r src/test/browser/requirements.txt
 python -m playwright install chromium
-python src/test/browser/test_bulk_colors.py target/urutau-jigs-0.2.2.jar
-python src/test/browser/test_whatsapp_share.py target/urutau-jigs-0.2.2.jar
-python src/test/browser/test_pwa.py target/urutau-jigs-0.2.2.jar
-python src/test/browser/test_mobile_layout.py target/urutau-jigs-0.2.2.jar --output target/auditoria-mobile
-python src/test/browser/test_quote_confirmation.py target/urutau-jigs-0.2.2.jar
-python src/test/browser/test_quote_drafts.py target/urutau-jigs-0.2.2.jar
-python src/test/browser/test_orders.py target/urutau-jigs-0.2.2.jar
-python src/test/browser/test_customers.py target/urutau-jigs-0.2.2.jar
-python src/test/browser/test_workspaces.py target/urutau-jigs-0.2.2.jar
+python src/test/browser/test_bulk_colors.py target/urutau-jigs-0.2.3.jar
+python src/test/browser/test_whatsapp_share.py target/urutau-jigs-0.2.3.jar
+python src/test/browser/test_pwa.py target/urutau-jigs-0.2.3.jar
+python src/test/browser/test_mobile_layout.py target/urutau-jigs-0.2.3.jar --output target/auditoria-mobile
+python src/test/browser/test_quote_confirmation.py target/urutau-jigs-0.2.3.jar
+python src/test/browser/test_quote_drafts.py target/urutau-jigs-0.2.3.jar
+python src/test/browser/test_orders.py target/urutau-jigs-0.2.3.jar
+python src/test/browser/test_customers.py target/urutau-jigs-0.2.3.jar
+python src/test/browser/test_workspaces.py target/urutau-jigs-0.2.3.jar
 ```
 
 Se já tiver Chrome ou Edge instalado, use `--channel chrome` ou `--channel msedge` nos comandos de teste e dispense a instalação do Chromium pelo Playwright.

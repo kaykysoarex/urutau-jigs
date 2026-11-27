@@ -14,13 +14,13 @@ from urllib.parse import urlsplit
 from playwright.sync_api import expect, sync_playwright
 
 sys.dont_write_bytecode = True
-from test_bulk_colors import choose, color, find_product, isolated_application, login, put_setting, submit_and_check_preview
-from test_whatsapp_share import issue_quote
+from test_bulk_colors import choose, color, find_product, isolated_application, login, put_setting, quantity, submit_and_check_preview
+from test_quote_confirmation import assert_clean_form
 
 
 WORKER = "/service-worker.js"
-CACHE = "urutau-jigs-pwa-0.2.2"
-NEXT_CACHE = "urutau-jigs-pwa-0.2.2-browser-next"
+CACHE = "urutau-jigs-pwa-0.2.3"
+NEXT_CACHE = "urutau-jigs-pwa-0.2.3-browser-next"
 UNRELATED_CACHE = "qa-cache-fora-da-pwa"
 PNG_ICONS = {
     "/icons/icon-192.png": 192,
@@ -187,8 +187,19 @@ def create_issued_quote(page):
     put_setting(page, "/api/catalog/prices", {
         "variants": [{"id": variant, "retailPrice": 12.5, "wholesalePrice": 10}]
     })
-    quote = issue_quote(page, variant, "Cliente de teste da PWA")
-    assert quote["number"] >= 1
+    page.locator("#client-name").fill("Cliente de teste da PWA")
+    choose(page, "Spinner", 12)
+    color(page, "03").check()
+    quantity(page, "03").fill("2")
+    submit_and_check_preview(page, page.locator("#item-add").tap, {variant: 2})
+    with page.expect_response(lambda response: response.url.endswith("/api/quotes")
+                              and response.request.method == "POST") as pending:
+        page.locator("#quote-issue").tap()
+    quote = pending.value.json()
+    expect(page.locator("#quote-success")).to_be_visible()
+    assert_clean_form(page)
+    assert page.evaluate("Boolean(navigator.serviceWorker.controller)")
+    page.locator("#quote-success-close").tap()
     return quote["number"], variant
 
 

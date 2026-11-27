@@ -133,7 +133,28 @@ def retry_save(page, draft_id):
     saved(page)
 
 
-def issue_and_discard(page, draft_id, untouched):
+def issue_and_discard(page, other_device, draft_id, untouched):
+    other_device.reload()
+    other_device.locator("#draft-list-toggle summary").click()
+    other_device.locator(f'[data-draft-action="{draft_id}-open"]').click()
+    saved(other_device)
+    assert other_device.evaluate("draftUi.current.id") == draft_id
+    other_device.evaluate("""id => {
+        const original = window.fetch;
+        window.fetch = function(input, options) {
+            if (options?.method !== "PUT" || !String(input).endsWith("/" + id)) {
+                return original.call(this, input, options);
+            }
+            window.fetch = original;
+            return new Promise(resolve => {
+                window.finishDelayedSave = () => resolve(original.call(this, input, options));
+            });
+        };
+    }""", draft_id)
+    other_device.locator("#draft-notes").fill("Alteração de outro dispositivo ainda em trânsito")
+    expect(other_device.locator("#draft-save-status")).to_have_text("Salvando rascunho...")
+    assert other_device.evaluate("typeof window.finishDelayedSave === 'function'")
+
     fail_next_request(page, "POST", "/api/quotes")
     page.locator("#quote-issue").click()
     expect(page.locator("#toast")).to_have_text("Falha de teste")
@@ -142,6 +163,11 @@ def issue_and_discard(page, draft_id, untouched):
     page.locator("#quote-issue").click()
     expect(page.locator("#quote-success")).to_be_visible()
     assert [draft["id"] for draft in drafts(page)] == [untouched]
+    other_device.evaluate("() => { window.finishDelayedSave(); }")
+    expect(other_device.locator("#draft-conflict")).to_be_visible()
+    expect(other_device.locator("#draft-notes")).to_have_value("Alteração de outro dispositivo ainda em trânsito")
+    assert other_device.request.get(f"{DRAFTS}/{draft_id}").status == 404
+    assert [draft["id"] for draft in drafts(other_device)] == [untouched]
     page.locator("#quote-success-close").click()
 
     page.locator("#draft-list-toggle summary").click()
@@ -204,7 +230,7 @@ def main():
                 copy = conflicts(desktop, mobile, original)
                 offline(second, mobile, copy)
                 retry_save(mobile, copy)
-                issue_and_discard(mobile, copy, original)
+                issue_and_discard(mobile, desktop, copy, original)
                 ai_recovery(mobile)
     print(f"{args.engine}: salvamento, recuperação em outro dispositivo, conflito, offline, emissão e IA validados.", flush=True)
 

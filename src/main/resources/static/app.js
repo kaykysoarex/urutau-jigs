@@ -706,8 +706,10 @@ function renderSummary() {
   }
   byId("quote-preview-pdf").disabled = state.issueBusy || state.draft.length === 0;
   const issue = byId("quote-issue");
-  issue.disabled = state.issueBusy || Boolean(state.issueConfirmation) || !estimate || !quantity || missingPrices() || hasUnreviewedInterpretation();
-  issue.querySelector("span").textContent = state.issueBusy ? "Emitindo…" : "Emitir orçamento";
+  const canIssue = estimate && quantity && !missingPrices() && !hasUnreviewedInterpretation();
+  issue.disabled = state.issueBusy || Boolean(state.issueConfirmation) || (!state.quoteAttempt && !canIssue);
+  issue.querySelector("span").textContent = state.issueBusy ? "Emitindo…"
+    : state.quoteAttempt ? "Tentar confirmar emissão" : "Emitir orçamento";
 }
 
 function resetPdfPreview() {
@@ -987,54 +989,55 @@ function setQuoteBusy(busy) {
 }
 
 async function issueQuote() {
-  if (state.issueBusy || state.issueConfirmation || state.aiBusy || draftUi.busy || draftUi.switching || !state.preview || missingPrices() || hasUnreviewedInterpretation()) return;
-  const form = byId("client-form");
-  const name = byId("client-name");
-  name.value = name.value.trim();
-  if (!form.reportValidity()) return;
-  const body = { client: readQuoteClient(form), items: draftItems(), reviewToken: state.preview.reviewToken,
-    customer: quoteCustomerSelection() };
+  if (state.issueBusy || state.issueConfirmation || state.aiBusy || draftUi.busy || draftUi.switching) return;
+  let body = state.quoteAttempt;
+  if (!body) {
+    if (!state.preview || missingPrices() || hasUnreviewedInterpretation()) return;
+    const form = byId("client-form");
+    const name = byId("client-name");
+    name.value = name.value.trim();
+    if (!form.reportValidity()) return;
+    body = { client: readQuoteClient(form), items: draftItems(), reviewToken: state.preview.reviewToken,
+      customer: quoteCustomerSelection(), requestId: generateRequestId() };
+    queueDraftSave();
+  }
   const origin = quoteScreenPosition();
-  queueDraftSave();
   setQuoteBusy(true);
   let issued;
   try {
-    if (!await flushDraft()) {
-      toast("Sincronize o rascunho antes de emitir o orçamento.");
-      return;
+    if (!state.quoteAttempt) {
+      if (!await flushDraft() || draftUi.current?.version == null) {
+        toast("Sincronize o rascunho antes de emitir o orçamento.");
+        return;
+      }
+      body.draftId = draftUi.current.id;
+      body.draftVersion = draftUi.current.version;
+      state.quoteAttempt = body;
     }
-    const draft = draftUi.current;
-    if (draft?.version != null) {
-      body.draftId = draft.id;
-      body.draftVersion = draft.version;
+    const result = await api("/api/quotes", { method: "POST", body });
+    if (!Number.isSafeInteger(result?.number) || result.number < 1
+        || typeof result.clientName !== "string" || !Number.isInteger(result.quantity) || result.quantity < 1
+        || !["LOJISTA", "CONSUMIDOR_FINAL"].includes(result.priceTier)
+        || typeof result.total !== "string" || !/^\d+(?:\.\d+)?$/u.test(result.total)) {
+      throw new RequestError(0, "O servidor não confirmou a emissão. Tente novamente.");
     }
-    const fingerprint = JSON.stringify(body);
-    if (state.quoteAttempt?.fingerprint !== fingerprint) {
-      state.quoteAttempt = { fingerprint, id: generateRequestId() };
-    }
-    body.requestId = state.quoteAttempt.id;
-    issued = await api("/api/quotes", { method: "POST", body });
-    if (!issued?.number) throw new RequestError(0, "O servidor não confirmou a emissão. Tente novamente.");
-    if (draft) forgetDraft(draft.id);
-    draftUi.current = null;
-    state.quoteAttempt = null;
-    updateDraftStatus();
+    issued = result;
+    completeDraftIssue();
   } catch (error) {
     toast(error.message);
     if (body.customer?.register && error.status === 409) void quoteCustomerPicker.checkPhone();
-    if (error.status === 409 || error.status === 422 || error.status === 400 || error.status === 404) {
+    if ([400, 404, 409, 422].includes(error.status)) {
+      state.quoteAttempt = null;
       if (body.draftId && (error.status === 409 || error.status === 404)) await checkDraftAfterIssue(body);
       await loadCatalog();
       await updatePreview();
     }
   } finally {
     setQuoteBusy(false);
-    if (!issued?.number) {
-      renderDraftList();
-      updateDraftStatus();
-    }
+    renderDraftList();
+    updateDraftStatus();
   }
-  if (issued?.number) {
+  if (issued) {
     showQuoteConfirmation(issued, origin);
     if (state.route?.page === "history") void loadHistory(0);
   }
@@ -1068,9 +1071,9 @@ function closeQuoteConfirmation(restorePosition = true) {
   if (!confirmation) return;
   state.issueConfirmation = null;
   byId("quote-success").close();
-  resetDraftWorkspace();
-  if (draftUi.source === "IA") clearOrderConversation();
+  renderSummary();
   renderDraftList();
+  updateDraftStatus();
   if (restorePosition) {
     const active = confirmation.focus;
     const focus = quotePage(state.route?.page) ? byId("quote-summary-title")

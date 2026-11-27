@@ -9,6 +9,7 @@ from playwright.sync_api import expect, sync_playwright
 sys.dont_write_bytecode = True
 from test_bulk_colors import choose, color, isolated_application, login, quantity
 from test_quote_drafts import fail_next_request, saved
+from test_quote_confirmation import assert_clean_form
 
 
 def visit(page, route):
@@ -87,10 +88,31 @@ def exercise(page, user, password, output, label):
     expect(page.locator("#summary-quantity")).to_have_text("1 unidade")
     visit(page, "novo-orcamento-ia")
     expect(page.locator("#summary-quantity")).to_have_text("7 unidades")
+    page.locator("#chat-message").fill("Texto da próxima interpretação ainda não enviado")
+    page.locator("#draft-notes").fill("Observação da emissão com IA")
+    launch = page.locator("#assistant-launch")
+    launch.click()
+    page.locator("#assistant-message").fill("Qual é a quantidade mínima para lojista?")
+    page.locator("#assistant-send").click()
+    expect(page.locator("#assistant-log")).to_contain_text("30 unidades")
+    page.locator("#assistant-close").click()
+
     page.locator("#quote-issue").click()
     expect(page.locator("#quote-success")).to_be_visible()
     assert page.evaluate("location.hash") == "#novo-orcamento-ia"
+    assert_clean_form(page)
+    expect(page.locator("#chat-message")).to_have_value("")
+    expect(page.locator("#chat-log")).not_to_contain_text("As iscas foram identificadas")
+    expect(page.locator("#ai-items")).to_be_empty()
+    expect(page.locator("#ai-review")).to_be_disabled()
+    expect(page.locator("#draft-ai-review")).to_be_hidden()
+    assert page.evaluate("state.conversation === null && draftUi.pendingAi.length === 0")
+    assert [draft["clientName"] for draft in page.request.get("/api/quote-drafts").json()
+            if draft["clientName"] in (name, f"IA QA {label}")] == [name]
     page.locator("#quote-success-close").click()
+    launch.click()
+    expect(page.locator("#assistant-log")).to_contain_text("30 unidades")
+    page.locator("#assistant-close").click()
 
     visit(page, "novo-orcamento")
     expect(page.locator("#client-name")).to_have_value(name)
@@ -101,7 +123,6 @@ def exercise(page, user, password, output, label):
     history = [draft for draft in page.request.get("/api/quote-drafts").json() if draft["clientName"] == name]
     assert len(history) == 1 and history[0]["source"] == "IA"
 
-    launch = page.locator("#assistant-launch")
     launch.click()
     modal = page.locator("#assistant-panel")
     expect(modal).to_be_visible()
