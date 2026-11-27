@@ -19,8 +19,8 @@ from test_whatsapp_share import issue_quote
 
 
 WORKER = "/service-worker.js"
-CACHE = "urutau-jigs-pwa-0.2.1-entrega"
-NEXT_CACHE = "urutau-jigs-pwa-0.2.1-entrega-browser-next"
+CACHE = "urutau-jigs-pwa-0.2.2"
+NEXT_CACHE = "urutau-jigs-pwa-0.2.2-browser-next"
 UNRELATED_CACHE = "qa-cache-fora-da-pwa"
 PNG_ICONS = {
     "/icons/icon-192.png": 192,
