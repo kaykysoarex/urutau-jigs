@@ -25,7 +25,7 @@ public final class QuoteDtos {
     private QuoteDtos() {}
 
     public enum PriceTier { CONSUMIDOR_FINAL, LOJISTA }
-    public enum Status { PENDENTE }
+    public enum Status { PENDENTE, CONFIRMADO, CANCELADO }
 
     public interface IssuedClient extends Default {}
 

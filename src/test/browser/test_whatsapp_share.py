@@ -227,7 +227,7 @@ def fallback_sharing(page, variant_id, first_quote):
     show_history(page)
     first_row = history_row(page, first_number)
     expect(first_row.get_by_role("link", name=re.compile("Baixar PDF"))).to_be_visible()
-    first_row.get_by_text("Pendente", exact=True).wait_for()
+    first_row.get_by_text("Aguardando confirmação", exact=True).wait_for()
     first_row.get_by_role("link", name=re.compile("Visualizar PDF")).click()
     viewer = page.locator("#issued-pdf-dialog")
     expect(viewer).to_be_visible()

@@ -50,6 +50,10 @@ class QuoteItem {
         this.subtotal = line.subtotal();
     }
 
+    Line approvedLine() {
+        return new Line(variantId, modelName, weightGrams, colorCode, quantity, unitPrice, subtotal);
+    }
+
     QuotePdf.Line documentLine() {
         return new QuotePdf.Line(modelName, weightGrams, colorCode, quantity, unitPrice, subtotal);
     }

@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="/app.css">
   <script src="/pwa.js" defer></script>
   <script src="/quote-drafts.js" defer></script>
+  <script src="/orders.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body class="workspace">
@@ -29,6 +30,7 @@
       <p class="nav-label">Orçamentos</p>
       <a class="nav-link" href="#novo-orcamento" data-page="manual" aria-current="page"><svg class="icon"><use href="/icons.svg#file-plus"/></svg><span>Novo orçamento</span></a>
       <a class="nav-link" href="#urutau-ai" data-page="ai"><svg class="icon"><use href="/icons.svg#sparkles"/></svg><span>URUTAU AI</span></a>
+      <a class="nav-link" href="#pedidos" data-page="orders"><svg class="icon"><use href="/icons.svg#receipt"/></svg><span>Pedidos</span></a>
       <a class="nav-link" href="#meus-orcamentos" data-page="history"><svg class="icon"><use href="/icons.svg#archive"/></svg><span>Meus orçamentos</span></a>
       <p class="nav-label">Administração</p>
       <a class="nav-link" href="#catalogo" data-page="catalog"><svg class="icon"><use href="/icons.svg#boxes"/></svg><span>Catálogo de iscas</span></a>
@@ -203,6 +205,25 @@
         </div>
       </section>
 
+      <section id="page-orders" data-view="orders" aria-labelledby="orders-title" hidden>
+        <div class="page-heading"><div><h1 id="orders-title" tabindex="-1">Pedidos</h1></div></div>
+        <section class="panel panel-body order-controls" aria-label="Consulta de pedidos">
+          <dl class="order-counts">
+            <div><dt>Aguardando confirmação</dt><dd id="orders-pending">0</dd></div>
+            <div><dt>Confirmados</dt><dd id="orders-confirmed">0</dd></div>
+            <div><dt>Cancelados</dt><dd id="orders-cancelled">0</dd></div>
+          </dl>
+          <form id="order-filters" class="order-fields">
+            <label class="field"><span>Pesquisar por nome ou número</span><input id="order-search" type="search" maxlength="120"></label>
+            <label class="field"><span>Estado comercial</span><select id="order-status"><option value="">Todos</option><option value="PENDENTE">Aguardando confirmação</option><option value="CONFIRMADO">Confirmado</option><option value="CANCELADO">Cancelado</option></select></label>
+            <label class="field"><span>Ordenação por data</span><select id="order-sort"><option value="true">Mais recentes</option><option value="false">Mais antigos</option></select></label>
+          </form>
+        </section>
+        <p id="orders-feedback" class="order-feedback" role="status" hidden></p>
+        <ul id="orders-list" class="orders-list"></ul>
+        <div id="orders-pages" class="pagination" hidden></div>
+      </section>
+
       <section id="page-history" data-view="history" aria-labelledby="history-title" hidden>
         <div class="page-heading">
           <div><h1 id="history-title">Meus orçamentos</h1><p>Consulte os orçamentos emitidos, visualize ou baixe os PDFs.</p></div>
@@ -246,6 +267,20 @@
       </section>
     </main>
   </div>
+
+  <dialog id="order-dialog" class="quote-confirmation order-dialog" aria-labelledby="order-dialog-title">
+    <div class="dialog-heading"><h2 id="order-dialog-title" tabindex="-1" autofocus>Registro comercial</h2><button id="order-close" class="button secondary" type="button">Fechar</button></div>
+    <div id="order-dialog-body" class="dialog-body"></div>
+    <form id="order-form" hidden>
+      <div class="dialog-body order-fields">
+        <label id="order-date-field" class="field"><span>Data prevista de conclusão</span><input id="order-expected" type="date"></label>
+        <label id="order-notes-field" class="field"><span>Observações</span><textarea id="order-notes" rows="3" maxlength="1000"></textarea></label>
+        <label id="order-reason-field" class="field" hidden><span>Motivo do cancelamento</span><textarea id="order-reason" rows="3" maxlength="500"></textarea></label>
+        <p id="order-form-error" class="form-error" role="status" hidden></p>
+      </div>
+      <div class="dialog-actions"><button id="order-submit" class="button primary" type="submit">Confirmar pedido</button><button id="order-back" class="button secondary" type="button">Voltar</button></div>
+    </form>
+  </dialog>
 
   <dialog id="quote-success" class="quote-confirmation" aria-labelledby="quote-success-title" aria-describedby="quote-success-message">
     <div class="dialog-body quote-confirmation-body">

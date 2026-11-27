@@ -4,6 +4,7 @@ const byId = id => document.getElementById(id);
 const routes = {
   "novo-orcamento": { page: "manual", title: "Novo orçamento", group: "Orçamentos" },
   "urutau-ai": { page: "ai", title: "URUTAU AI", group: "Orçamentos" },
+  pedidos: { page: "orders", title: "Pedidos", group: "Orçamentos" },
   "meus-orcamentos": { page: "history", title: "Meus orçamentos", group: "Orçamentos" },
   catalogo: { page: "catalog", title: "Catálogo de iscas", group: "Administração" },
   precos: { page: "prices", title: "Tabela de preços", group: "Administração" },
@@ -328,6 +329,7 @@ function navigate() {
     void refreshDraftList();
   }
   if (route.page === "history") void loadHistory(0);
+  if (route.page === "orders") void loadOrders(0);
   if (route.page === "catalog") { renderCatalog(); void loadCatalog(); }
   if (route.page === "prices") { renderPriceModels(); void loadCatalog(); }
   if (route.page === "settings") void loadSettings();
@@ -1055,7 +1057,8 @@ async function loadHistory(page) {
     const rows = records.content.map(record => {
       const pdfActions = element("div", "history-quote-actions");
       pdfActions.append(pdfLink(record.number, false, true), pdfLink(record.number, true, true), quoteShareButton(record.number, record.clientName));
-      const status = record.status === "PENDENTE" ? element("span", "state-pill pending", "Pendente") : element("span", "state-pill", record.status);
+      pdfActions.append(orderButton("Ver estado comercial", record.number, "detail", true));
+      const status = orderStatusBadge(record.status);
       return [[`Nº ${quoteNumber(record.number)}`, "cell-name"], [record.clientName], [formattedDate(record.createdAt)], [numberFormat.format(record.quantity), "numerical"], [moneyFormat.format(record.total), "numerical"], [status], [pdfActions, "cell-actions"]];
     });
     content.replaceChildren(table("Orçamentos emitidos", [["Orçamento"], ["Cliente"], ["Data"], ["Unidades", "numerical"], ["Total", "numerical"], ["Status"], ["PDF", "cell-actions"]], rows, "history-table"));
@@ -1641,6 +1644,7 @@ function bindEvents() {
   byId("chat-form").addEventListener("submit", sendMessage);
   byId("ai-review").addEventListener("click", reviewConversation);
   bindDraftEvents();
+  bindOrderEvents();
 }
 
 async function loadSession() {

@@ -56,6 +56,12 @@ class CommercialQuote {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 24)
     private Status status;
+    Instant cancelledAt;
+    @Column(length = 80)
+    String cancelledBy;
+    @Column(length = 500)
+    String cancellationReason;
+
     @OneToMany(mappedBy = "quote", cascade = CascadeType.PERSIST)
     @OrderBy("id")
     private List<QuoteItem> items = new ArrayList<>();
@@ -80,6 +86,25 @@ class CommercialQuote {
 
     Summary summary() {
         return new Summary(id, clientName, createdAt, totalQuantity, total, status, priceTier);
+    }
+
+    void confirm() {
+        status = Status.CONFIRMADO;
+    }
+
+    void cancel(Instant at, String by, String reason) {
+        status = Status.CANCELADO;
+        cancelledAt = at;
+        cancelledBy = by;
+        cancellationReason = reason;
+    }
+
+    Client customer() {
+        return new Client(clientName, clientPhone, clientCity, clientState);
+    }
+
+    List<QuoteDtos.Line> approvedItems() {
+        return items.stream().map(QuoteItem::approvedLine).toList();
     }
 
     ShareDetails shareDetails() {
