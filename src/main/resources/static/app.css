@@ -95,6 +95,21 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .section-icon .icon, .summary-icon .icon { width: 19px; height: 19px; }
 .panel-body { padding: 1.11rem 1.18rem; }
 .client-fields { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: .92rem; }
+.draft-notes-field { grid-column: 1 / -1; }
+.quote-drafts { display: grid; justify-items: start; gap: .65rem; overflow-wrap: anywhere; }
+.draft-toolbar, .draft-list-row { display: flex; align-items: center; flex-wrap: wrap; gap: .45rem .9rem; }
+.draft-toolbar { width: 100%; justify-content: space-between; }
+.draft-toolbar h2 { font-size: 1.06rem; }
+.draft-actions { display: flex; flex-wrap: wrap; gap: .4rem; min-width: 0; }
+.quote-drafts .button { min-height: 44px; max-width: 100%; white-space: normal; }
+.quote-drafts details { width: 100%; }
+.quote-drafts summary { min-height: 44px; padding-block: .7rem; cursor: pointer; color: var(--brand); font-weight: 650; }
+.draft-list { list-style: none; margin: 0; padding: 0; }
+.draft-list-row { justify-content: space-between; padding-block: .65rem; border-top: 1px solid var(--line); }
+.draft-list-row > div { min-width: 0; }
+.draft-list-row small, .draft-list-row time { display: block; color: var(--muted); font-size: .8rem; }
+.draft-status { color: var(--muted); font-size: .86rem; }
+.draft-status:empty { display: none; }
 .field { display: grid; gap: .38rem; min-width: 0; color: #36363d; font-size: .875rem; font-weight: 645; }
 .field small, .combination-builder small { color: var(--muted); font-size: .83rem; font-weight: 400; line-height: 1.45; }
 .required, .form-error { color: #af350b; }

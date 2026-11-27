@@ -45,7 +45,7 @@ class OfficialPricesMigrationTest {
             assertThat(row.wholesale()).isNull();
         });
 
-        assertThat(flyway(url).load().migrate().migrationsExecuted).isOne();
+        assertThat(flyway(url).target("5").load().migrate().migrationsExecuted).isOne();
 
         List<PricedVariant> after = variants(jdbc);
         assertThat(jdbc.queryForList("SELECT * FROM catalog_product ORDER BY id")).isEqualTo(products);
@@ -95,7 +95,7 @@ class OfficialPricesMigrationTest {
         logs.start();
         logger.addAppender(logs);
         try {
-            assertThat(flyway(url).load().migrate().migrationsExecuted).isOne();
+            assertThat(flyway(url).target("5").load().migrate().migrationsExecuted).isOne();
 
             assertPrices(jdbc, g1, "22.99", "16.00");
             assertPrices(jdbc, g2, "29.00", "0.00");
@@ -109,7 +109,7 @@ class OfficialPricesMigrationTest {
 
             updatePrices(jdbc, g1, "31.59", "20.01");
             updatePrices(jdbc, urunaja, null, "23.00");
-            assertThat(flyway(url).load().migrate().migrationsExecuted).isZero();
+            assertThat(flyway(url).target("5").load().migrate().migrationsExecuted).isZero();
             JdbcTemplate afterRestart = jdbc(url);
             assertPrices(afterRestart, g1, "31.59", "20.01");
             assertPrices(afterRestart, urunaja, null, "23.00");

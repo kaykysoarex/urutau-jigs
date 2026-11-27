@@ -13,6 +13,7 @@ import java.net.URI;
 import java.security.Principal;
 import java.util.Locale;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -53,11 +54,21 @@ class QuoteController {
         String admin = principal.getName();
         Summary summary;
         try {
-            summary = quotes.issue(request, admin);
+            summary = issueWithDraftLockRetry(request, admin);
         } catch (DataIntegrityViolationException concurrentSubmission) {
             summary = quotes.findIssued(admin, request.requestId()).orElseThrow(() -> concurrentSubmission);
         }
         return ResponseEntity.created(URI.create("/api/quotes/" + summary.number() + "/pdf")).body(summary);
+    }
+
+    private Summary issueWithDraftLockRetry(IssueRequest request, String admin) {
+        try {
+            return quotes.issue(request, admin);
+        } catch (PessimisticLockingFailureException concurrentDraftChange) {
+            if (request.draftId() == null) throw concurrentDraftChange;
+            // A waiting transaction can lose its snapshot when the first issuer closes the draft.
+            return quotes.issue(request, admin);
+        }
     }
 
     @GetMapping

@@ -8,6 +8,7 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 import jakarta.validation.groups.ConvertGroup;
 import jakarta.validation.groups.Default;
@@ -55,7 +56,8 @@ public final class QuoteDtos {
             List<@NotNull @Valid ItemInput> items,
             @NotNull(message = "Identificador de emissão ausente.") UUID requestId,
             @NotNull(message = "Confira o orçamento antes de emitir.")
-            @Pattern(regexp = "[a-f0-9]{64}", message = "Atualize os valores antes de emitir.") String reviewToken) {}
+            @Pattern(regexp = "[a-f0-9]{64}", message = "Atualize os valores antes de emitir.") String reviewToken,
+            UUID draftId, @PositiveOrZero Long draftVersion) {}
 
     public record Line(long variantId, String model, int weight, String color, int quantity,
                        @JsonFormat(shape = JsonFormat.Shape.STRING) BigDecimal unitPrice,

@@ -139,7 +139,7 @@
       else offlineDialog.close();
     }
     renderUpdate();
-    if (!offline && !offlinePageRetry) dispatchEvent(new Event("urutau:online"));
+    if (!offlinePageRetry) dispatchEvent(new Event(offline ? "urutau:offline" : "urutau:online"));
   }
 
   async function networkAvailable() {

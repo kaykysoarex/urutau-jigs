@@ -325,6 +325,7 @@ function navigate() {
     renderManualCatalog();
     void loadCatalog();
     void updatePreview();
+    void refreshDraftList();
   }
   if (route.page === "history") void loadHistory(0);
   if (route.page === "catalog") { renderCatalog(); void loadCatalog(); }
@@ -486,6 +487,7 @@ function pickVariant(id) {
 }
 
 function resetItemEditor() {
+  clearDraftEditor();
   state.editingItem = null;
   state.editingQuantity = null;
   state.selectedColors.clear();
@@ -499,6 +501,7 @@ function editItem(id) {
   const draft = state.draft.find(item => item.variantId === id);
   if (!draft || state.issueBusy) return;
   const variant = pickVariant(id);
+  clearDraftEditor();
   state.editingItem = id;
   state.editingQuantity = String(draft.quantity);
   state.selectedColors.clear();
@@ -509,10 +512,11 @@ function editItem(id) {
   if (!variant) formFeedback("item-error", "Selecione uma combinação ativa para substituir este item.");
   const quantity = byId("item-colors").querySelector(".item-color-quantity:not(:disabled)");
   (quantity ?? byId("item-model")).focus();
+  queueDraftSave();
 }
 
 function draftChanged() {
-  window.urutauPwa?.renderUpdate();
+  queueDraftSave();
   void updatePreview();
 }
 
@@ -580,7 +584,7 @@ function renderManualRows() {
     remove.disabled = state.issueBusy;
     controls.append(edit, remove);
     return [
-      [captioned(priced?.model ?? item.model, `${item.weight} g · Cor ${item.color}`)],
+      [captioned(priced?.model ?? item.model, `${item.weight} g · Cor ${item.color}${item.active === false ? " · Indisponível" : ""}`)],
       [numberFormat.format(item.quantity), "numerical"],
       [priced?.unitPrice != null ? moneyFormat.format(priced.unitPrice) : "—", `numerical${priced && priced.unitPrice == null ? " cell-missing" : ""}`],
       [priced?.subtotal != null ? moneyFormat.format(priced.subtotal) : "—", "numerical"],
@@ -595,7 +599,7 @@ function draftItems() {
 }
 
 function readQuoteClient(form) {
-  return Object.fromEntries(Array.from(new FormData(form), ([key, value]) => [key, value.trim()]));
+  return Object.fromEntries(["name", "phone", "city", "state"].map(name => [name, form.elements.namedItem(name).value.trim()]));
 }
 
 async function updatePreview() {
@@ -938,33 +942,50 @@ function setQuoteBusy(busy) {
 }
 
 async function issueQuote() {
-  if (state.issueBusy || state.issueConfirmation || !state.preview || missingPrices()) return;
+  if (state.issueBusy || state.issueConfirmation || state.aiBusy || draftUi.busy || !state.preview || missingPrices()) return;
   const form = byId("client-form");
   const name = byId("client-name");
   name.value = name.value.trim();
   if (!form.reportValidity()) return;
-  const client = readQuoteClient(form);
-  const body = { client, items: draftItems(), reviewToken: state.preview.reviewToken };
-  const fingerprint = JSON.stringify(body);
-  if (state.quoteAttempt?.fingerprint !== fingerprint) {
-    state.quoteAttempt = { fingerprint, id: generateRequestId() };
-  }
-  body.requestId = state.quoteAttempt.id;
+  const body = { client: readQuoteClient(form), items: draftItems(), reviewToken: state.preview.reviewToken };
   const origin = quoteScreenPosition();
+  queueDraftSave();
   setQuoteBusy(true);
   let issued;
   try {
+    if (!await flushDraft()) {
+      toast("Sincronize o rascunho antes de emitir o orçamento.");
+      return;
+    }
+    const draft = draftUi.current;
+    if (draft?.version != null) {
+      body.draftId = draft.id;
+      body.draftVersion = draft.version;
+    }
+    const fingerprint = JSON.stringify(body);
+    if (state.quoteAttempt?.fingerprint !== fingerprint) {
+      state.quoteAttempt = { fingerprint, id: generateRequestId() };
+    }
+    body.requestId = state.quoteAttempt.id;
     issued = await api("/api/quotes", { method: "POST", body });
     if (!issued?.number) throw new RequestError(0, "O servidor não confirmou a emissão. Tente novamente.");
+    if (draft) forgetDraft(draft.id);
+    draftUi.current = null;
     state.quoteAttempt = null;
+    updateDraftStatus();
   } catch (error) {
     toast(error.message);
-    if (error.status === 409 || error.status === 422 || error.status === 400) {
+    if (error.status === 409 || error.status === 422 || error.status === 400 || error.status === 404) {
+      if (body.draftId && (error.status === 409 || error.status === 404)) await checkDraftAfterIssue(body);
       await loadCatalog();
       await updatePreview();
     }
   } finally {
     setQuoteBusy(false);
+    if (!issued?.number) {
+      renderDraftList();
+      updateDraftStatus();
+    }
   }
   if (issued?.number) {
     showQuoteConfirmation(issued, origin);
@@ -1000,10 +1021,8 @@ function closeQuoteConfirmation(restorePosition = true) {
   if (!confirmation) return;
   state.issueConfirmation = null;
   byId("quote-success").close();
-  state.draft = [];
-  byId("client-form").reset();
-  resetItemEditor();
-  void updatePreview();
+  resetDraftWorkspace();
+  renderDraftList();
   if (restorePosition) {
     const active = confirmation.focus;
     const focus = state.route?.page === "manual" ? byId("quote-summary-title")
@@ -1445,7 +1464,7 @@ function renderAIItems() {
 }
 
 async function startConversation() {
-  if (state.aiBusy || !state.aiOnline) return;
+  if (state.aiBusy || state.issueBusy || state.issueConfirmation || draftUi.busy || !state.aiOnline) return;
   const field = byId("chat-message");
   const draft = field.value;
   state.aiBusy = true;
@@ -1464,7 +1483,7 @@ async function startConversation() {
 
 async function sendMessage(event) {
   event.preventDefault();
-  if (state.aiBusy || !state.aiOnline) return;
+  if (state.aiBusy || state.issueBusy || state.issueConfirmation || draftUi.busy || !state.aiOnline) return;
   const field = byId("chat-message");
   const draft = field.value;
   const message = draft.trim();
@@ -1477,6 +1496,10 @@ async function sendMessage(event) {
   try {
     if (!state.conversation) state.conversation = await api("/api/ai/conversations", { method: "POST" });
     state.conversation = await api(`/api/ai/conversations/${encodeURIComponent(state.conversation.id)}/messages`, { method: "POST", body: { message } });
+    if (!state.conversation.needsClarification && state.conversation.items.length) {
+      draftUi.pendingAi = state.conversation.items.map(item => ({ ...item }));
+      queueDraftSave();
+    }
     progress.remove();
     if (state.conversation.needsClarification) {
       appendChat("Preciso esclarecer alguns detalhes com você.", "assistant", state.conversation.questions);
@@ -1495,10 +1518,17 @@ async function sendMessage(event) {
 }
 
 function reviewConversation() {
-  if (state.aiBusy || state.issueBusy || state.conversation?.needsClarification || !state.conversation?.items.length) return;
+  if (state.conversation?.needsClarification || !state.conversation?.items.length) return;
+  reviewItems(state.conversation.items);
+}
+
+function reviewItems(items) {
+  if (state.aiBusy || state.issueBusy || state.issueConfirmation || draftUi.busy || !items.length) return;
   if (state.draft.length && !window.confirm("Substituir os itens do orçamento atual pelos itens da conversa? Os dados do cliente serão mantidos.")) return;
-  state.draft = state.conversation.items.map(item => ({ ...item }));
+  state.draft = items.map(item => ({ ...item }));
+  draftUi.pendingAi = [];
   resetItemEditor();
+  draftChanged();
   location.hash = "novo-orcamento";
   toast("Itens enviados para revisão no orçamento.");
 }
@@ -1522,10 +1552,12 @@ function bindEvents() {
   addEventListener("keydown", drawerKeydown);
   byId("client-form").addEventListener("submit", event => event.preventDefault());
   byId("item-model").addEventListener("change", () => {
+    clearDraftEditor();
     state.selectedColors.clear();
     renderManualCatalog({ weight: "" });
   });
   byId("item-weight").addEventListener("change", () => {
+    clearDraftEditor();
     state.selectedColors.clear();
     renderManualCatalog();
   });
@@ -1608,6 +1640,7 @@ function bindEvents() {
   byId("ai-new").addEventListener("click", () => void startConversation());
   byId("chat-form").addEventListener("submit", sendMessage);
   byId("ai-review").addEventListener("click", reviewConversation);
+  bindDraftEvents();
 }
 
 async function loadSession() {
@@ -1624,7 +1657,7 @@ async function loadSession() {
 }
 
 function hasUnfinishedQuote() {
-  return state.issueBusy || state.draft.length > 0 || state.editingItem !== null || state.selectedColors.size > 0
+  return state.issueBusy || draftIsDirty() || state.draft.length > 0 || state.editingItem !== null || state.selectedColors.size > 0
     || Object.values(readQuoteClient(byId("client-form"))).some(Boolean)
     || state.aiBusy || Boolean(state.conversation?.items.length || state.conversation?.needsClarification
       || byId("chat-message").value.trim());
@@ -1641,7 +1674,10 @@ function initialize() {
   renderManualRows();
   navigate();
   window.urutauPwa?.setUpdateGuard(hasUnfinishedQuote);
-  addEventListener("urutau:online", () => void loadSession());
+  addEventListener("urutau:online", async () => {
+    await loadSession();
+    queueDraftSave();
+  });
   void loadSession();
 }
 

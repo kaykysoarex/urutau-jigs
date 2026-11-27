@@ -1,6 +1,7 @@
 package br.com.urutau.jigs.quotes;
 
 import br.com.urutau.jigs.catalog.CatalogService;
+import br.com.urutau.jigs.catalog.CatalogDtos.VariantForQuote;
 import br.com.urutau.jigs.pdf.QuotePdf;
 import br.com.urutau.jigs.quotes.QuoteDtos.Client;
 import br.com.urutau.jigs.quotes.QuoteDtos.History;
@@ -18,11 +19,13 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -43,12 +46,14 @@ public class QuoteService {
 
     private final CatalogService catalog;
     private final QuoteRepository quotes;
+    private final QuoteDraftRepository drafts;
     private final Clock clock;
     private final JsonMapper json;
 
-    QuoteService(CatalogService catalog, QuoteRepository quotes, Clock clock, JsonMapper json) {
+    QuoteService(CatalogService catalog, QuoteRepository quotes, QuoteDraftRepository drafts, Clock clock, JsonMapper json) {
         this.catalog = catalog;
         this.quotes = quotes;
+        this.drafts = drafts;
         this.clock = clock;
         this.json = json;
     }
@@ -71,12 +76,24 @@ public class QuoteService {
 
     @Transactional(isolation = Isolation.REPEATABLE_READ)
     Summary issue(IssueRequest request, String admin) {
+        if ((request.draftId() == null) != (request.draftVersion() == null)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Informe o rascunho e sua versão.");
+        }
+        var draft = request.draftId() == null ? null : drafts.lockOwned(request.draftId().toString(), admin)
+                .orElseThrow(QuoteDraftService::notFound);
         var existing = findIssued(admin, request.requestId());
         if (existing.isPresent()) {
             return existing.get();
         }
 
         var client = clean(request.client());
+        if (draft != null) {
+            draft.requireVersion(request.draftVersion());
+            var saved = json.readValue(draft.content, QuoteDraftDtos.Content.class);
+            if (!saved.client().equals(client) || !saved.items().equals(request.items())) {
+                throw conflict("Sincronize as alterações do rascunho antes de emitir.");
+            }
+        }
         var preview = calculate(request.items());
         if (preview.missingPrices() > 0) {
             throw conflict("Cadastre todos os preços da tabela aplicada antes de emitir.");
@@ -85,9 +102,10 @@ public class QuoteService {
             throw conflict("O catálogo ou os valores mudaram. Confira o orçamento atualizado antes de emitir.");
         }
 
-        var now = clock.instant();
+        var now = clock.instant().truncatedTo(ChronoUnit.MICROS);
         var quote = new CommercialQuote(request.requestId().toString(), admin, now,
                 LocalDate.ofInstant(now, COMMERCIAL_ZONE), client, preview);
+        if (draft != null) draft.close(now);
         return quotes.saveAndFlush(quote).summary();
     }
 
@@ -122,6 +140,10 @@ public class QuoteService {
     }
 
     private Preview calculate(List<ItemInput> requested) {
+        return calculate(requested, null);
+    }
+
+    Preview calculate(List<ItemInput> requested, Map<Long, VariantForQuote> knownVariants) {
         var grouped = new LinkedHashMap<Long, Integer>();
         int totalQuantity = 0;
         for (var item : requested) {
@@ -134,7 +156,7 @@ public class QuoteService {
 
         int threshold = catalog.wholesaleThreshold();
         PriceTier tier = totalQuantity >= threshold ? PriceTier.LOJISTA : PriceTier.CONSUMIDOR_FINAL;
-        var variants = catalog.findVariants(grouped.keySet());
+        var variants = knownVariants == null ? catalog.findVariants(grouped.keySet()) : knownVariants;
         List<Line> lines = new ArrayList<>(grouped.size());
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         int missing = 0;
@@ -167,7 +189,7 @@ public class QuoteService {
         }
     }
 
-    private static Client clean(Client client) {
+    static Client clean(Client client) {
         if (client == null) {
             return new Client(null, null, null, null);
         }
