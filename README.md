@@ -23,12 +23,12 @@ O JAR distribuído requer Java 21. Para compilar o código-fonte, instale també
            [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2], 'Process')
        }
    }
-   java -jar ..\urutau-jigs-0.1.9.jar
+   java -jar ..\urutau-jigs-0.1.10.jar
    ```
 
 3. Abra [o painel local](http://127.0.0.1:8080/) e entre com uma das contas. Confira os valores em **Tabela de preços**. Os preços iniciais do catálogo oficial são cadastrados pelo Flyway. O H2 guarda os registros em `data/` da pasta onde a aplicação foi iniciada.
 
-Use `mvn spring-boot:run` para executar pelo código-fonte. Use `mvn clean verify` para executar os testes e gerar o JAR em `target/urutau-jigs-0.1.9.jar`. Em Linux, exporte as mesmas variáveis no ambiente do processo e execute o JAR com Java 21.
+Use `mvn spring-boot:run` para executar pelo código-fonte. Use `mvn clean verify` para executar os testes e gerar o JAR em `target/urutau-jigs-0.1.10.jar`. Em Linux, exporte as mesmas variáveis no ambiente do processo e execute o JAR com Java 21.
 
 ## Instalar o URUTAU JIGS como aplicativo
 
@@ -129,6 +129,16 @@ Confira os contadores de cores e unidades e clique em **Adicionar ao orçamento*
 
 Em telas estreitas, os itens do orçamento, o histórico, o catálogo e a tabela de preços se adaptam à largura disponível. O resumo segue o fluxo da página para que os campos e as ações fiquem acessíveis ao abrir o teclado. Abra o menu lateral pelo botão do cabeçalho e feche-o pelo próprio menu, pelo fundo ou selecionando uma página.
 
+## Rascunhos de orçamento
+
+O gerador salva após cerca de um segundo de inatividade. São salvos os dados do cliente, as observações, os itens adicionados, as seleções ainda em edição e os itens da URUTAU AI prontos para revisão. O indicador **Rascunho salvo automaticamente** aparece após a confirmação do servidor. As observações ficam no rascunho e não aparecem no PDF.
+
+No gerador, use **Continuar o último orçamento** ou **Visualizar rascunhos**. Cada administrador acessa seus próprios rascunhos, inclusive em outro dispositivo após entrar na mesma conta. **Iniciar novo orçamento** preserva os rascunhos anteriores. Para remover um deles, use **Descartar** e confirme. Se dois dispositivos editarem o mesmo rascunho, escolha **Carregar versão mais recente** ou **Salvar em outro rascunho** para preservar sua edição.
+
+Ao recuperar a edição, o sistema Java usa os preços do catálogo e o limite comercial vigentes. O gerador sinaliza mudanças nas condições e combinações indisponíveis para revisão. Os rascunhos ficam fora do histórico, e a numeração comercial é atribuída na emissão definitiva. Uma emissão confirmada encerra o rascunho.
+
+Em caso de perda da conexão, mantenha o aplicativo aberto até a sincronização. A tentativa é retomada quando a rede volta e também pode ser acionada em **Tentar novamente**. Alterações pendentes ficam em memória e podem ser perdidas se você fechar o aplicativo. O sistema armazena os rascunhos no MySQL do Railway ou no H2 local. A migração Flyway V6 é aplicada na inicialização e não exige novas variáveis de ambiente.
+
 ## Pré-visualização do PDF
 
 Com pelo menos um item no orçamento manual ou revisado pela URUTAU AI, clique em **Pré-visualizar PDF** para abrir ou baixar o rascunho. Os campos monetários sem valor aparecem como **A definir**. A identificação **PRÉVIA — SEM VALIDADE COMERCIAL** aparece em todas as páginas. O rascunho não é gravado no histórico e não recebe número oficial. Para **Emitir orçamento**, cadastre todos os preços da tabela aplicada e informe o nome do cliente.
@@ -159,7 +169,7 @@ O provedor de IA interpreta mensagens livres e ajuda a esclarecer trechos ambíg
    GEMINI_MODEL=gemini-3.5-flash-lite
    ```
 
-3. Pare a execução anterior. Na mesma pasta `urutau-jigs`, recarregue o `.env` com o trecho de PowerShell da seção de instalação e execute `java -jar ..\urutau-jigs-0.1.9.jar`. A mesma pasta de trabalho mantém o acesso a `data/urutau.mv.db` quando o H2 padrão estiver em uso. Abra **URUTAU AI** e envie um pedido de teste como `3 Spinner 12g cor 03`.
+3. Pare a execução anterior. Na mesma pasta `urutau-jigs`, recarregue o `.env` com o trecho de PowerShell da seção de instalação e execute `java -jar ..\urutau-jigs-0.1.10.jar`. A mesma pasta de trabalho mantém o acesso a `data/urutau.mv.db` quando o H2 padrão estiver em uso. Abra **URUTAU AI** e envie um pedido de teste como `3 Spinner 12g cor 03`.
 
 O modelo padrão, inclusive com `GEMINI_MODEL` em branco, é o Gemini 3.5 Flash-Lite estável. O back-end usa a operação oficial `generateContent` com Structured Outputs. Os limites de uso dependem do projeto no Google. Se a cota acabar ou o serviço falhar, a interface informa o erro e o gerador manual continua disponível. [Modelo e modalidade gratuita](https://aistudio.google.com/docs/models/gemini-3.5-flash-lite#pricing) · [Limites de uso](https://aistudio.google.com/docs/rate-limits)
 
@@ -197,17 +207,18 @@ Os testes de navegador executam o JAR gerado por `mvn clean verify` com um H2 de
 ```powershell
 python -m pip install -r src/test/browser/requirements.txt
 python -m playwright install chromium
-python src/test/browser/test_bulk_colors.py target/urutau-jigs-0.1.9.jar
-python src/test/browser/test_whatsapp_share.py target/urutau-jigs-0.1.9.jar
-python src/test/browser/test_pwa.py target/urutau-jigs-0.1.9.jar
-python src/test/browser/test_mobile_layout.py target/urutau-jigs-0.1.9.jar --output target/auditoria-mobile
-python src/test/browser/test_quote_confirmation.py target/urutau-jigs-0.1.9.jar
+python src/test/browser/test_bulk_colors.py target/urutau-jigs-0.1.10.jar
+python src/test/browser/test_whatsapp_share.py target/urutau-jigs-0.1.10.jar
+python src/test/browser/test_pwa.py target/urutau-jigs-0.1.10.jar
+python src/test/browser/test_mobile_layout.py target/urutau-jigs-0.1.10.jar --output target/auditoria-mobile
+python src/test/browser/test_quote_confirmation.py target/urutau-jigs-0.1.10.jar
+python src/test/browser/test_quote_drafts.py target/urutau-jigs-0.1.10.jar
 ```
 
 Se já tiver Chrome ou Edge instalado, use `--channel chrome` ou `--channel msedge` nos comandos de teste e dispense a instalação do Chromium pelo Playwright.
 
 A suíte de responsividade testa as páginas e os diálogos com dados sintéticos de 320 a 1920 px, também em paisagem. Use `python -m playwright install firefox webkit` e execute a suíte com `--engine firefox` e `--engine webkit` para repetir a inspeção nesses motores. A opção `--baseline` registra achados de uma versão anterior para comparação. A emulação de teclado e toque complementa os testes em aparelhos físicos.
 
-A suíte de confirmação testa emissão com a página rolada, prevenção de envio duplicado, falha de emissão e ações do PDF e WhatsApp. Execute também com `--engine webkit` para validar em WebKit, incluindo o modo standalone simulado.
+A suíte de confirmação testa emissão com a página rolada, prevenção de envio duplicado, falha de emissão e ações do PDF e WhatsApp. A suíte de rascunhos testa a recuperação em outra sessão do navegador, a edição simultânea, a perda de conexão e o fluxo com a URUTAU AI. Execute ambas também com `--engine webkit` para validar em WebKit, incluindo o modo standalone simulado.
 
 O PDF usa fontes comerciais compatíveis com português brasileiro. Caracteres fora do repertório Windows-1252 são substituídos por `?` no documento.
