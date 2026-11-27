@@ -56,6 +56,7 @@ class CommercialQuote {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 24)
     private Status status;
+    Long customerId;
     Instant cancelledAt;
     @Column(length = 80)
     String cancelledBy;

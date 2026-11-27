@@ -23,7 +23,8 @@ function draftContent() {
       editingQuantity: state.editingQuantity === null ? null : draftEditorAmount(state.editingQuantity),
       colors: [...colors].map(([variantId, quantity]) => ({ variantId, quantity: draftEditorAmount(quantity) }))
     },
-    pendingAi: draftUi.pendingAi.map(({ variantId, quantity }) => ({ variantId, quantity }))
+    pendingAi: draftUi.pendingAi.map(({ variantId, quantity }) => ({ variantId, quantity })),
+    customer: quoteCustomer.ref
   };
 }
 
@@ -229,6 +230,7 @@ function resetDraftWorkspace() {
   state.draft = [];
   state.quoteAttempt = null;
   byId("client-form").reset();
+  clearQuoteCustomer();
   formFeedback("draft-restore-notice", "");
   resetItemEditor();
   updateDraftStatus();
@@ -247,6 +249,7 @@ function hydrateDraft(opened) {
     byId("client-form").elements.namedItem(name).value = value ?? "";
   }
   byId("draft-notes").value = content.notes;
+  restoreQuoteCustomer(content.customer, opened.customer);
   byId("item-quantity").value = editor.defaultQuantity;
   state.editingItem = editor.editingId;
   state.editingQuantity = editor.editingQuantity;

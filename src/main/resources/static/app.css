@@ -109,6 +109,20 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .order-facts dd { white-space: pre-wrap; font-weight: 650; }
 .order-lines li { display: grid; gap: .25rem; padding-bottom: .5rem; border-bottom: 1px solid var(--line); white-space: pre-wrap; }
 .order-audit summary { padding: .75rem 0; cursor: pointer; }
+.customer-picker, .customer-editor, .customer-candidates { display: grid; gap: .65rem; min-width: 0; }
+.customer-picker { justify-items: start; }
+.customer-picker > :is(.field, .customer-candidates) { width: 100%; }
+.customer-picker p:empty, .customer-candidates:empty { display: none; }
+.customer-candidates { max-height: 14rem; overflow: auto; }
+.customer-picker .button, .quote-customer-selector .button { min-height: 44px; white-space: normal; }
+.customer-check { display: flex; align-items: center; gap: .55rem; min-height: 44px; overflow-wrap: anywhere; }
+.customer-check input { flex: 0 0 auto; }
+.customer-editor { grid-template-columns: repeat(auto-fit, minmax(min(100%, 215px), 1fr)); }
+.customer-wide, .quote-customer-selector { grid-column: 1 / -1; }
+.quote-customer-selector summary { padding: .6rem 0; min-height: 44px; cursor: pointer; color: var(--brand); font-weight: 650; }
+.quote-customer-selector .notice { margin-block: .35rem; }
+.customer-picker input, .customer-editor input, .customer-editor select, .customer-editor textarea { font-size: 16px; }
+.customer-histories { margin-top: .85rem; }
 .quote-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 315px); gap: 1.15rem; align-items: start; }
 .quote-main { display: grid; gap: 1.1rem; min-width: 0; }
 .section-heading { display: flex; align-items: center; gap: .73rem; padding: 1.12rem 1.18rem; border-bottom: 1px solid var(--line); }

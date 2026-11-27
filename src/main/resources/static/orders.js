@@ -117,7 +117,7 @@ function renderOrderDialog(mode) {
   const record = data.commercial;
   ordersUi.mode = mode;
   const title = byId("order-dialog-title");
-  title.textContent = { confirm: "Confirmar pedido", edit: "Editar pedido", cancel: "Cancelar registro" }[mode]
+  title.textContent = { confirm: "Confirmar pedido", edit: "Editar pedido", cancel: "Cancelar registro", customer: "Vincular cadastro" }[mode]
     ?? (record.orderNumber == null ? "Detalhes do orçamento" : "Detalhes do pedido");
   const customer = data.client;
   const facts = [
@@ -138,13 +138,16 @@ function renderOrderDialog(mode) {
   body.replaceChildren(orderFacts(facts));
   if (mode === "detail") renderOrderDetail(body, data);
   byId("order-form").hidden = mode === "detail";
-  byId("order-date-field").hidden = byId("order-notes-field").hidden = mode === "cancel";
+  byId("order-date-field").hidden = byId("order-notes-field").hidden = mode === "cancel" || mode === "customer";
+  const picker = byId("order-customer-picker");
+  picker.hidden = data.customerId != null || !["confirm", "customer"].includes(mode);
+  ordersUi.customerPicker = picker.hidden ? null : mountCustomerPicker(picker, { phone: () => data.client.phone, allowRegister: true, suggestPhone: true });
   byId("order-reason-field").hidden = mode !== "cancel";
   byId("order-reason").required = mode === "cancel";
   byId("order-expected").value = data.expectedOn ?? "";
   byId("order-notes").value = data.notes ?? "";
   byId("order-reason").value = "";
-  byId("order-submit").textContent = { confirm: "Confirmar pedido", edit: "Salvar alterações", cancel: "Confirmar cancelamento" }[mode] ?? "";
+  byId("order-submit").textContent = { confirm: "Confirmar pedido", edit: "Salvar alterações", cancel: "Confirmar cancelamento", customer: "Vincular cliente" }[mode] ?? "";
   formFeedback("order-form-error", "");
   byId("order-dialog").scrollTop = 0;
   title.focus({ preventScroll: true });
@@ -172,11 +175,17 @@ function renderOrderDetail(body, data) {
     button.addEventListener("click", () => renderOrderDialog(mode));
     actions.append(button);
   }
+  actions.append(data.customerId != null
+    ? customerButton("Ver cadastro do cliente", () => {
+        if (byId("customer-dialog").open) byId("order-dialog").close();
+        void openCustomer(data.customerId);
+      })
+    : customerButton("Vincular cliente", () => renderOrderDialog("customer")));
   body.append(element("h3", "", "Itens aprovados"), items, actions);
   if (!data.events.length) return;
   const audit = element("details", "order-audit");
   const events = element("ul", "order-lines");
-  const descriptions = { CONFIRMACAO: "Confirmação", EDICAO: "Edição", CANCELAMENTO: "Cancelamento" };
+  const descriptions = { CONFIRMACAO: "Confirmação", EDICAO: "Edição", CANCELAMENTO: "Cancelamento", VINCULO: "Vínculo com cliente" };
   for (const event of data.events) {
     const row = element("li", "", `${descriptions[event.action]} · ${orderDate(event.occurredAt)} · ${event.actor}`);
     if (event.expectedOn) row.append(element("span", "", `Prazo: ${orderCalendar(event.expectedOn)}`));
@@ -194,23 +203,27 @@ async function submitOrderChange(event) {
   const isEdit = ordersUi.mode === "edit";
   const isCancel = ordersUi.mode === "cancel";
   const record = ordersUi.detail.commercial;
-  const suffix = isEdit ? "terms" : isCancel ? "cancel" : "confirm";
+  const isLink = ordersUi.mode === "customer";
+  const suffix = isEdit ? "terms" : isCancel ? "cancel" : isLink ? "customer" : "confirm";
   const terms = { expectedOn: byId("order-expected").value || null, notes: byId("order-notes").value };
   const reason = byId("order-reason").value.trim();
   if (isCancel && !reason) return formFeedback("order-form-error", "Informe o motivo do cancelamento.");
-  const body = isEdit ? { version: ordersUi.detail.version, terms } : isCancel ? { reason } : terms;
+  const customer = ordersUi.customerPicker?.selection() ?? null;
+  if (isLink && !customer) return formFeedback("order-form-error", "Selecione um cadastro ou marque a opção de cadastrar.");
+  const body = isEdit ? { version: ordersUi.detail.version, terms } : isCancel ? { reason } : isLink ? customer : { ...terms, customer };
   const form = byId("order-form");
   ordersUi.busy = true;
   for (const control of form.elements) control.disabled = true;
   byId("order-close").disabled = true;
   try {
-    ordersUi.detail = await api(`/api/orders/${record.quoteNumber}/${suffix}`, { method: isEdit ? "PUT" : "POST", body });
+    ordersUi.detail = await api(`/api/orders/${record.quoteNumber}/${suffix}`, { method: isEdit || isLink ? "PUT" : "POST", body });
     renderOrderDialog("detail");
-    toast(isCancel ? "Registro cancelado." : isEdit ? "Alterações salvas." : "Pedido confirmado com sucesso.");
+    toast(isCancel ? "Registro cancelado." : isEdit ? "Alterações salvas." : isLink ? "Cliente vinculado." : "Pedido confirmado com sucesso.");
     if (state.route?.page === "orders") void loadOrders(ordersUi.page);
     if (state.route?.page === "history") void loadHistory(0);
   } catch (error) {
     formFeedback("order-form-error", error.message);
+    if (customer?.register && error.status === 409) void ordersUi.customerPicker?.checkPhone();
   } finally {
     ordersUi.busy = false;
     for (const control of form.elements) control.disabled = false;

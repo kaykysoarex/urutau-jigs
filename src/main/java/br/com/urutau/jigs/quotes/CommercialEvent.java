@@ -8,7 +8,7 @@ import java.time.LocalDate;
 @Entity
 @Table(name = "commercial_event")
 class CommercialEvent {
-    enum Action { CONFIRMACAO, EDICAO, CANCELAMENTO }
+    enum Action { CONFIRMACAO, EDICAO, CANCELAMENTO, VINCULO }
 
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

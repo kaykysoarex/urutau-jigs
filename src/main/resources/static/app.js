@@ -4,6 +4,7 @@ const byId = id => document.getElementById(id);
 const routes = {
   "novo-orcamento": { page: "manual", title: "Novo orçamento", group: "Orçamentos" },
   "urutau-ai": { page: "ai", title: "URUTAU AI", group: "Orçamentos" },
+  clientes: { page: "customers", title: "Clientes", group: "Orçamentos" },
   pedidos: { page: "orders", title: "Pedidos", group: "Orçamentos" },
   "meus-orcamentos": { page: "history", title: "Meus orçamentos", group: "Orçamentos" },
   catalogo: { page: "catalog", title: "Catálogo de iscas", group: "Administração" },
@@ -330,6 +331,7 @@ function navigate() {
   }
   if (route.page === "history") void loadHistory(0);
   if (route.page === "orders") void loadOrders(0);
+  if (route.page === "customers") void loadCustomers(0);
   if (route.page === "catalog") { renderCatalog(); void loadCatalog(); }
   if (route.page === "prices") { renderPriceModels(); void loadCatalog(); }
   if (route.page === "settings") void loadSettings();
@@ -949,7 +951,8 @@ async function issueQuote() {
   const name = byId("client-name");
   name.value = name.value.trim();
   if (!form.reportValidity()) return;
-  const body = { client: readQuoteClient(form), items: draftItems(), reviewToken: state.preview.reviewToken };
+  const body = { client: readQuoteClient(form), items: draftItems(), reviewToken: state.preview.reviewToken,
+    customer: quoteCustomerSelection() };
   const origin = quoteScreenPosition();
   queueDraftSave();
   setQuoteBusy(true);
@@ -977,6 +980,7 @@ async function issueQuote() {
     updateDraftStatus();
   } catch (error) {
     toast(error.message);
+    if (body.customer?.register && error.status === 409) void quoteCustomerPicker.checkPhone();
     if (error.status === 409 || error.status === 422 || error.status === 400 || error.status === 404) {
       if (body.draftId && (error.status === 409 || error.status === 404)) await checkDraftAfterIssue(body);
       await loadCatalog();
@@ -1645,6 +1649,7 @@ function bindEvents() {
   byId("ai-review").addEventListener("click", reviewConversation);
   bindDraftEvents();
   bindOrderEvents();
+  bindCustomerEvents();
 }
 
 async function loadSession() {
@@ -1674,6 +1679,7 @@ function initialize() {
   byId("header-date").textContent = currentDateFormat.format(today);
   const states = "AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO".split(" ");
   setOptions(byId("client-state"), states.map(code => [code, code]), "Selecione");
+  setOptions(byId("customer-state"), states.map(code => [code, code]), "Selecione");
   initializeChat();
   renderManualRows();
   navigate();

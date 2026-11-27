@@ -42,6 +42,12 @@ class CommercialOrderController {
         return privateResponse(orders.edit(quoteNumber, change, admin.getName()));
     }
 
+    @PutMapping("/{quoteNumber}/customer")
+    ResponseEntity<OrderDtos.Detail> associate(@PathVariable long quoteNumber,
+            @Valid @RequestBody CustomerDtos.Selection selection, Principal admin) {
+        return privateResponse(orders.associate(quoteNumber, selection, admin.getName()));
+    }
+
     @PostMapping("/{quoteNumber}/cancel")
     ResponseEntity<OrderDtos.Detail> cancel(@PathVariable long quoteNumber,
                                            @Valid @RequestBody OrderDtos.Cancellation reason, Principal admin) {

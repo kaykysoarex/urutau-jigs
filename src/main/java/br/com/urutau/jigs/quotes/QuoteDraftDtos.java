@@ -35,7 +35,13 @@ final class QuoteDraftDtos {
                    @NotNull @Size(max = QuoteDtos.MAX_ITEMS) List<@NotNull @Valid ItemInput> items,
                    @NotNull @Size(max = 1000) String notes,
                    @NotNull @Valid Editor editor,
-                   @NotNull @Size(max = QuoteDtos.MAX_ITEMS) List<@NotNull @Valid ItemInput> pendingAi) {
+                   @NotNull @Size(max = QuoteDtos.MAX_ITEMS) List<@NotNull @Valid ItemInput> pendingAi,
+                   @Valid CustomerDtos.Ref customer) {
+        Content(QuoteDtos.Client client, List<ItemInput> items, String notes, Editor editor, List<ItemInput> pendingAi) {
+            this(client, items, notes, editor, pendingAi, null);
+        }
+
+
         boolean meaningful() {
             return client.name() != null || client.phone() != null || client.city() != null || client.state() != null
                     || !notes.isBlank() || !items.isEmpty() || !pendingAi.isEmpty() || editor.meaningful();
@@ -50,5 +56,5 @@ final class QuoteDraftDtos {
     record Variant(long variantId, String model, int weight, String color, boolean active) {}
 
     record Opened(Listed summary, Content content, List<Variant> variants,
-                  QuoteDtos.Preview estimate, boolean estimateChanged, boolean editorUnavailable) {}
+                  QuoteDtos.Preview estimate, boolean estimateChanged, boolean editorUnavailable, CustomerDtos.Match customer) {}
 }

@@ -47,13 +47,16 @@ public class QuoteService {
     private final CatalogService catalog;
     private final QuoteRepository quotes;
     private final QuoteDraftRepository drafts;
+    private final CustomerService customers;
     private final Clock clock;
     private final JsonMapper json;
 
-    QuoteService(CatalogService catalog, QuoteRepository quotes, QuoteDraftRepository drafts, Clock clock, JsonMapper json) {
+    QuoteService(CatalogService catalog, QuoteRepository quotes, QuoteDraftRepository drafts, CustomerService customers,
+                 Clock clock, JsonMapper json) {
         this.catalog = catalog;
         this.quotes = quotes;
         this.drafts = drafts;
+        this.customers = customers;
         this.clock = clock;
         this.json = json;
     }
@@ -81,6 +84,7 @@ public class QuoteService {
         }
         var draft = request.draftId() == null ? null : drafts.lockOwned(request.draftId().toString(), admin)
                 .orElseThrow(QuoteDraftService::notFound);
+        customers.serializeRegistration(request.customer());
         var existing = findIssued(admin, request.requestId());
         if (existing.isPresent()) {
             return existing.get();
@@ -90,7 +94,10 @@ public class QuoteService {
         if (draft != null) {
             draft.requireVersion(request.draftVersion());
             var saved = json.readValue(draft.content, QuoteDraftDtos.Content.class);
-            if (!saved.client().equals(client) || !saved.items().equals(request.items())) {
+            Long savedCustomer = saved.customer() == null ? null : saved.customer().id();
+            Long selectedCustomer = request.customer() == null ? null : request.customer().id();
+            if (!saved.client().equals(client) || !saved.items().equals(request.items())
+                    || !java.util.Objects.equals(savedCustomer, selectedCustomer)) {
                 throw conflict("Sincronize as alterações do rascunho antes de emitir.");
             }
         }
@@ -105,6 +112,7 @@ public class QuoteService {
         var now = clock.instant().truncatedTo(ChronoUnit.MICROS);
         var quote = new CommercialQuote(request.requestId().toString(), admin, now,
                 LocalDate.ofInstant(now, COMMERCIAL_ZONE), client, preview);
+        quote.customerId = customers.resolve(request.customer(), client, admin);
         if (draft != null) draft.close(now);
         return quotes.saveAndFlush(quote).summary();
     }

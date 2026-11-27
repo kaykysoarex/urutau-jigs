@@ -57,7 +57,12 @@ public final class QuoteDtos {
             @NotNull(message = "Identificador de emissão ausente.") UUID requestId,
             @NotNull(message = "Confira o orçamento antes de emitir.")
             @Pattern(regexp = "[a-f0-9]{64}", message = "Atualize os valores antes de emitir.") String reviewToken,
-            UUID draftId, @PositiveOrZero Long draftVersion) {}
+            UUID draftId, @PositiveOrZero Long draftVersion, @Valid CustomerDtos.Selection customer) {
+        public IssueRequest(Client client, List<ItemInput> items, UUID requestId, String reviewToken,
+                            UUID draftId, Long draftVersion) {
+            this(client, items, requestId, reviewToken, draftId, draftVersion, null);
+        }
+    }
 
     public record Line(long variantId, String model, int weight, String color, int quantity,
                        @JsonFormat(shape = JsonFormat.Shape.STRING) BigDecimal unitPrice,

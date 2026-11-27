@@ -13,6 +13,7 @@
   <script src="/pwa.js" defer></script>
   <script src="/quote-drafts.js" defer></script>
   <script src="/orders.js" defer></script>
+  <script src="/customers.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body class="workspace">
@@ -30,6 +31,7 @@
       <p class="nav-label">Orçamentos</p>
       <a class="nav-link" href="#novo-orcamento" data-page="manual" aria-current="page"><svg class="icon"><use href="/icons.svg#file-plus"/></svg><span>Novo orçamento</span></a>
       <a class="nav-link" href="#urutau-ai" data-page="ai"><svg class="icon"><use href="/icons.svg#sparkles"/></svg><span>URUTAU AI</span></a>
+      <a class="nav-link" href="#clientes" data-page="customers"><svg class="icon"><use href="/icons.svg#user"/></svg><span>Clientes</span></a>
       <a class="nav-link" href="#pedidos" data-page="orders"><svg class="icon"><use href="/icons.svg#receipt"/></svg><span>Pedidos</span></a>
       <a class="nav-link" href="#meus-orcamentos" data-page="history"><svg class="icon"><use href="/icons.svg#archive"/></svg><span>Meus orçamentos</span></a>
       <p class="nav-label">Administração</p>
@@ -105,6 +107,11 @@
                 <div><h2 id="client-heading">Dados do cliente</h2><p>Informações que aparecem no PDF.</p></div>
               </div>
               <form id="client-form" class="panel-body client-fields" autocomplete="off">
+                <details id="quote-customer-details" class="quote-customer-selector">
+                  <summary>Vincular ou cadastrar cliente</summary>
+                  <div id="quote-customer-picker" class="customer-picker" hidden></div>
+                </details>
+                <div id="quote-customer-link" class="quote-customer-selector" hidden></div>
                 <label class="field"><span>Nome do cliente <span class="required" aria-hidden="true">*</span></span><input id="client-name" name="name" maxlength="120" placeholder="Nome ou razão social" autocapitalize="words" required></label>
                 <label class="field"><span>Telefone</span><input id="client-phone" type="tel" inputmode="tel" name="phone" maxlength="40" placeholder="(00) 00000-0000"></label>
                 <label class="field"><span>Cidade</span><input id="client-city" name="city" maxlength="120" placeholder="Informe a cidade" autocapitalize="words"></label>
@@ -205,6 +212,20 @@
         </div>
       </section>
 
+      <section id="page-customers" data-view="customers" aria-labelledby="customers-title" hidden>
+        <div class="page-heading">
+          <div><h1 id="customers-title" tabindex="-1">Clientes</h1></div>
+          <button id="customer-new" type="button" class="button primary">Cadastrar cliente</button>
+        </div>
+        <form id="customer-filters" class="panel panel-body order-fields">
+          <label class="field"><span>Pesquisar clientes</span><input id="customer-search" type="search" maxlength="120" placeholder="Nome, loja, telefone, cidade ou UF"></label>
+          <label class="field"><span>Situação</span><select id="customer-filter"><option value="">Todos</option><option value="true">Ativos</option><option value="false">Inativos</option></select></label>
+        </form>
+        <p id="customers-feedback" class="order-feedback" role="status"></p>
+        <ul id="customers-list" class="orders-list"></ul>
+        <div id="customers-pages" class="pagination" hidden></div>
+      </section>
+
       <section id="page-orders" data-view="orders" aria-labelledby="orders-title" hidden>
         <div class="page-heading"><div><h1 id="orders-title" tabindex="-1">Pedidos</h1></div></div>
         <section class="panel panel-body order-controls" aria-label="Consulta de pedidos">
@@ -268,6 +289,25 @@
     </main>
   </div>
 
+  <dialog id="customer-dialog" class="quote-confirmation order-dialog" aria-labelledby="customer-title">
+    <div class="dialog-heading"><h2 id="customer-title" tabindex="-1" autofocus>Cliente</h2><button id="customer-close" class="button secondary" type="button">Fechar</button></div>
+    <div id="customer-body" class="dialog-body"></div>
+    <form id="customer-form" hidden autocomplete="off">
+      <div class="dialog-body customer-editor">
+        <label class="field"><span>Nome ou razão social</span><input name="name" maxlength="120" required></label>
+        <label class="field"><span>Estabelecimento</span><input name="establishment" maxlength="120"></label>
+        <label class="field"><span>Telefone ou WhatsApp</span><input name="phone" type="tel" maxlength="40" inputmode="tel"></label>
+        <label class="field"><span>E-mail</span><input name="email" type="email" maxlength="254"></label>
+        <label class="field"><span>Cidade</span><input name="city" maxlength="120"></label>
+        <label class="field"><span>Estado</span><select name="state" id="customer-state"><option value="">Selecione</option></select></label>
+        <label class="field customer-wide"><span>Observações comerciais</span><textarea name="notes" rows="3" maxlength="1000"></textarea></label>
+        <div id="customer-duplicates" class="customer-picker customer-wide" hidden></div>
+        <p id="customer-form-error" class="form-error customer-wide" role="status" hidden></p>
+      </div>
+      <div class="dialog-actions"><button id="customer-save" class="button primary" type="submit">Salvar cadastro</button><button id="customer-back" class="button secondary" type="button">Voltar</button></div>
+    </form>
+  </dialog>
+
   <dialog id="order-dialog" class="quote-confirmation order-dialog" aria-labelledby="order-dialog-title">
     <div class="dialog-heading"><h2 id="order-dialog-title" tabindex="-1" autofocus>Registro comercial</h2><button id="order-close" class="button secondary" type="button">Fechar</button></div>
     <div id="order-dialog-body" class="dialog-body"></div>
@@ -276,6 +316,7 @@
         <label id="order-date-field" class="field"><span>Data prevista de conclusão</span><input id="order-expected" type="date"></label>
         <label id="order-notes-field" class="field"><span>Observações</span><textarea id="order-notes" rows="3" maxlength="1000"></textarea></label>
         <label id="order-reason-field" class="field" hidden><span>Motivo do cancelamento</span><textarea id="order-reason" rows="3" maxlength="500"></textarea></label>
+        <div id="order-customer-picker" class="customer-picker" hidden></div>
         <p id="order-form-error" class="form-error" role="status" hidden></p>
       </div>
       <div class="dialog-actions"><button id="order-submit" class="button primary" type="submit">Confirmar pedido</button><button id="order-back" class="button secondary" type="button">Voltar</button></div>

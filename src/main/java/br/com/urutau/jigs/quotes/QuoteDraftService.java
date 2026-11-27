@@ -28,14 +28,16 @@ class QuoteDraftService {
     private final QuoteDraftRepository drafts;
     private final CatalogService catalog;
     private final QuoteService quotes;
+    private final CustomerService customers;
     private final Clock clock;
     private final JsonMapper json;
 
-    QuoteDraftService(QuoteDraftRepository drafts, CatalogService catalog, QuoteService quotes, Clock clock,
+    QuoteDraftService(QuoteDraftRepository drafts, CatalogService catalog, QuoteService quotes, CustomerService customers, Clock clock,
                       JsonMapper json) {
         this.drafts = drafts;
         this.catalog = catalog;
         this.quotes = quotes;
+        this.customers = customers;
         this.clock = clock;
         this.json = json;
     }
@@ -59,14 +61,18 @@ class QuoteDraftService {
                 || content.editor().colors().stream().anyMatch(color -> !active(variants, color.variantId()));
         return new Opened(summary(draft, content), content, variants.values().stream()
                 .map(variant -> new Variant(variant.id(), variant.model(), variant.weight(), variant.color(), variant.active()))
-                .toList(), estimate, changed, editorUnavailable);
+                .toList(), estimate, changed, editorUnavailable,
+                content.customer() == null ? null : customers.snapshot(content.customer().id()));
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
     Listed save(UUID id, String owner, Save request) {
         String key = id.toString();
         var content = new Content(QuoteService.clean(request.content().client()), request.content().items(),
-                request.content().notes(), request.content().editor(), request.content().pendingAi());
+                request.content().notes(), request.content().editor(), request.content().pendingAi(), request.content().customer());
+        if (content.customer() != null && customers.snapshot(content.customer().id()).version() < content.customer().version()) {
+            throw invalid("O vínculo do cliente no rascunho é inválido.");
+        }
         String payload = json.writeValueAsString(content);
         var draft = drafts.lockOwned(key, owner).orElse(null);
         if (draft == null) {
@@ -96,7 +102,7 @@ class QuoteDraftService {
         var stored = content(draft);
         var incoming = request.content();
         if (stored.equals(new Content(QuoteService.clean(incoming.client()), incoming.items(), incoming.notes(),
-                incoming.editor(), incoming.pendingAi()))) {
+                incoming.editor(), incoming.pendingAi(), incoming.customer()))) {
             return summary(draft, stored);
         }
         draft.requireVersion(request.version());

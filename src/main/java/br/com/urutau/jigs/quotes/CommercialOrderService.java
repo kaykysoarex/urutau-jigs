@@ -19,13 +19,15 @@ class CommercialOrderService {
     private final CommercialOrderRepository orders;
     private final CommercialEventRepository events;
     private final Clock clock;
+    private final CustomerService customers;
 
     CommercialOrderService(QuoteRepository quotes, CommercialOrderRepository orders,
-                           CommercialEventRepository events, Clock clock) {
+                           CommercialEventRepository events, Clock clock, CustomerService customers) {
         this.quotes = quotes;
         this.orders = orders;
         this.events = events;
         this.clock = clock;
+        this.customers = customers;
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
@@ -60,6 +62,7 @@ class CommercialOrderService {
         if (existing != null) return detail(quote, existing);
         if (quote.summary().status() != PENDENTE) throw conflict("Este orçamento não está aguardando confirmação.");
         validateDate(terms);
+        if (terms.customer() != null) link(quote, terms.customer(), actor);
         var now = now();
         var order = orders.saveAndFlush(new CommercialOrder(quote, now, actor, terms));
         quote.confirm();
@@ -95,6 +98,27 @@ class CommercialOrderService {
         return detail(quote, order);
     }
 
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    OrderDtos.Detail associate(long quoteNumber, CustomerDtos.Selection selection, String actor) {
+        var quote = locked(quoteNumber);
+        link(quote, selection, actor);
+        if (quote.customerId == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Selecione um cadastro.");
+        return detail(quote, orders.findByQuoteId(quoteNumber).orElse(null));
+    }
+
+    private void link(CommercialQuote quote, CustomerDtos.Selection selection, String actor) {
+        if (quote.customerId != null) {
+            if (!quote.customerId.equals(selection.id()) || selection.wantsRegistration()) {
+                throw conflict("O registro já está vinculado a um cliente.");
+            }
+            return;
+        }
+        quote.customerId = customers.resolve(selection, quote.customer(), actor);
+        if (quote.customerId != null) {
+            events.save(new CommercialEvent(quote, CommercialEvent.Action.VINCULO, actor, now(), null, null));
+        }
+    }
+
     private OrderDtos.Detail detail(CommercialQuote quote, CommercialOrder order) {
         var summary = quote.summary();
         var date = quote.cancelledAt != null ? quote.cancelledAt : order == null ? summary.createdAt() : order.confirmedAt;
@@ -104,7 +128,7 @@ class CommercialOrderService {
                 order == null ? null : order.confirmedAt, order == null ? null : order.confirmedBy,
                 order == null ? null : order.expectedOn, order == null ? null : order.notes,
                 order == null ? null : order.version, quote.cancelledAt, quote.cancelledBy, quote.cancellationReason,
-                events.findByQuoteIdOrderByIdDesc(summary.number()).stream().map(CommercialEvent::view).toList());
+                events.findByQuoteIdOrderByIdDesc(summary.number()).stream().map(CommercialEvent::view).toList(), quote.customerId);
     }
 
     private static void validateDate(OrderDtos.Terms terms) {
