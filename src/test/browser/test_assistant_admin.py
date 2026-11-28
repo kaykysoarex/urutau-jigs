@@ -81,6 +81,22 @@ def exercise(page, label, output):
     page.locator("#assistant-launch").click()
     expect(page.locator("#assistant-log")).to_contain_text("Modelo cadastrado")
     assert page.locator("#assistant-panel").evaluate("(root) => root.scrollWidth <= root.clientWidth + 1")
+    if label == 1440:
+        page.locator("#assistant-close").click()
+        page.locator("#client-name").fill("Documento Fictício QA")
+        with page.expect_response(lambda response: response.url.endswith("/api/quotes")
+                                  and response.request.method == "POST") as issuing:
+            page.locator("#quote-issue").click()
+        assert issuing.value.status == 201
+        number = issuing.value.json()["number"]
+        page.locator("#quote-success-close").click()
+        page.locator("#assistant-launch").click()
+        send(page, f"Abra o orçamento número {number}.")
+        pdf_link = page.locator("#assistant-log").get_by_role("button", name="Visualizar PDF", exact=True)
+        with page.expect_response(f"**/api/quotes/{number}/pdf") as pdf:
+            pdf_link.click()
+        assert pdf.value.ok and pdf.value.body().startswith(b"%PDF")
+        expect(page.locator("#issued-pdf-dialog")).to_be_visible()
 
 
 def main():
