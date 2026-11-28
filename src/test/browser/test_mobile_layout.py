@@ -20,6 +20,7 @@ ROUTES = {
     "manual": "#item-model:not(:disabled)",
     "ai": "#chat-message:not(:disabled)",
     "history": "#history-content tbody tr",
+    "production": "#production-list .production-card",
     "catalog": "#catalog-content .catalog-card, #catalog-content tbody tr",
     "prices": "#price-content tbody tr input",
     "settings": "#settings-threshold:not(:disabled)",
@@ -277,6 +278,11 @@ def exercise_dialogs(audit, page, mobile):
     page.locator("#add-combinations").click()
     expect(page.locator("#dialog-variants tbody tr")).to_have_count(4)
     measure_dialog(audit, page, "#catalog-dialog", "#catalog-save", "#catalog-cancel", "catalogo-modal", mobile)
+    if not audit.baseline or page.locator('[data-page="production"]').count():
+        open_route(page, "production")
+        page.locator("#production-list button").first.click()
+        expect(page.locator("#production-commercial")).to_be_visible()
+        measure_dialog(audit, page, "#production-dialog", "#production-commercial", "#production-close", "producao-detalhes", mobile)
     # Abre a ajuda de instalação local sem exigir um prompt nativo do sistema operacional.
     page.locator("#pwa-ios-guide").evaluate("(node) => node.showModal()")
     measure_dialog(audit, page, "#pwa-ios-guide", "#pwa-ios-close", "#pwa-ios-close", "pwa-instalacao", mobile)
@@ -373,7 +379,12 @@ def matrix(browser, engine, url, username, password, audit):
             audit.viewport(page, *selected[0])
             login(page, username, password)
             seed_catalog(page)
-            issue_quote(page, variant_for_fixture(page), LONG_CLIENT, "+55 11 90000-0123")
+            issued = issue_quote(page, variant_for_fixture(page), LONG_CLIENT, "+55 11 90000-0123")
+            if not audit.baseline or page.locator('[data-page="production"]').count():
+                csrf = page.request.get("/csrf").json()
+                confirmed = page.request.post(f"/api/orders/{issued['number']}/confirm",
+                    headers={csrf["headerName"]: csrf["token"]}, data={"expectedOn": "2030-01-12"})
+                assert confirmed.ok
             seed_draft(page)
             open_route(page, "ai")
             exercise_ai(page)
@@ -381,6 +392,8 @@ def matrix(browser, engine, url, username, password, audit):
             for width, height in selected:
                 audit.viewport(page, width, height)
                 for route in ROUTES:
+                    if route == "production" and audit.baseline and not page.locator('[data-page="production"]').count():
+                        continue
                     measure_route(audit, page, route, device)
                 if (width, height) in SCREENSHOTS:
                     exercise_dialogs(audit, page, device)

@@ -13,6 +13,7 @@
   <script src="/pwa.js" defer></script>
   <script src="/quote-drafts.js" defer></script>
   <script src="/orders.js" defer></script>
+  <script src="/production.js" defer></script>
   <script src="/customers.js" defer></script>
   <script src="/assistant.js" defer></script>
   <script src="/app.js" defer></script>
@@ -36,6 +37,8 @@
       <a class="nav-link" href="#meus-orcamentos" data-page="history"><svg class="icon"><use href="/icons.svg#archive"/></svg><span>Histórico de orçamentos</span></a>
       <a class="nav-link" href="#pedidos" data-page="orders"><svg class="icon"><use href="/icons.svg#receipt"/></svg><span>Pedidos</span></a>
       <a class="nav-link" href="#clientes" data-page="customers"><svg class="icon"><use href="/icons.svg#user"/></svg><span>Clientes</span></a>
+      <p class="nav-label">Operacional</p>
+      <a class="nav-link" href="#producao" data-page="production"><svg class="icon" aria-hidden="true"><use href="/icons.svg#boxes"/></svg><span>Produção</span></a>
       <p class="nav-label">Administração</p>
       <a class="nav-link" href="#catalogo" data-page="catalog"><svg class="icon"><use href="/icons.svg#boxes"/></svg><span>Catálogo de iscas</span></a>
       <a class="nav-link" href="#precos" data-page="prices"><svg class="icon"><use href="/icons.svg#tag"/></svg><span>Tabela de preços</span></a>
@@ -277,6 +280,35 @@
         <div id="orders-pages" class="pagination" hidden></div>
       </section>
 
+      <section id="page-production" data-view="production" aria-labelledby="production-title" hidden>
+        <div class="page-heading">
+          <div><h1 id="production-title" tabindex="-1">Produção</h1><p>Fila por ordem de confirmação comercial.</p></div>
+          <button id="production-refresh" class="button secondary" type="button">Atualizar fila</button>
+        </div>
+        <dl id="production-metrics" class="production-metrics" aria-label="Indicadores de produção">
+          <div class="panel panel-body"><dt>Pedidos na fila</dt><dd id="production-orders">—</dd></div>
+          <div class="panel panel-body"><dt>Iscas demandadas</dt><dd id="production-units">—</dd></div>
+          <div class="panel panel-body"><dt>Atrasados</dt><dd id="production-overdue">—</dd></div>
+          <div class="panel panel-body"><dt>Prazo próximo</dt><dd id="production-upcoming">—</dd></div>
+          <div class="panel panel-body"><dt>Vencem hoje</dt><dd id="production-dueToday">—</dd></div>
+          <div class="panel panel-body production-first-metric"><dt>Primeiro da fila</dt><dd id="production-first">—</dd></div>
+        </dl>
+        <form id="production-filters" class="panel panel-body order-fields" role="search" aria-label="Pesquisar na fila">
+          <label class="field"><span>Pesquisar na produção</span><input id="production-search" type="search" maxlength="120" placeholder="Cliente, pedido ou modelo"></label>
+          <label class="field"><span>Situação do prazo</span>
+            <select id="production-deadline">
+              <option value="">Todos</option><option value="ATRASADO">Atrasados</option><option value="PROXIMO">Prazo próximo</option>
+              <option value="VENCE_HOJE">Vencem hoje</option><option value="DENTRO_DO_PRAZO">Dentro do prazo</option>
+              <option value="SEM_PRAZO">Sem prazo definido</option>
+            </select>
+          </label>
+        </form>
+        <p id="production-feedback" class="order-feedback" role="status" hidden></p>
+        <p id="production-checked" class="order-meta" hidden></p>
+        <ul id="production-list" class="orders-list" aria-label="Fila de produção"></ul>
+        <div id="production-pages" class="pagination" hidden></div>
+      </section>
+
       <section id="page-history" data-view="history" aria-labelledby="history-title" hidden>
         <div class="page-heading">
           <div><h1 id="history-title">Histórico de orçamentos</h1><p>Consulte os orçamentos emitidos, visualize ou baixe os PDFs.</p></div>
@@ -457,6 +489,15 @@
         </div>
       </section>
     </div>
+  </dialog>
+
+  <dialog id="production-dialog" class="catalog-dialog production-dialog" aria-labelledby="production-dialog-title">
+    <div class="dialog-heading">
+      <div><h2 id="production-dialog-title" tabindex="-1" autofocus>Detalhes da produção</h2></div>
+      <button id="production-close" class="icon-button" type="button" aria-label="Fechar detalhes"><svg class="icon" aria-hidden="true"><use href="/icons.svg#x"/></svg></button>
+    </div>
+    <div id="production-detail" class="dialog-body" aria-live="polite"></div>
+    <div class="dialog-actions"><button id="production-commercial" class="button secondary" type="button" hidden>Abrir em Pedidos</button></div>
   </dialog>
 
   <dialog id="catalog-dialog" class="catalog-dialog" aria-labelledby="catalog-dialog-heading">

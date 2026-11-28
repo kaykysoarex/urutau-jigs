@@ -7,6 +7,7 @@ const routes = {
   "novo-orcamento-ia": { page: "ai", title: "Novo orçamento com IA", group: "Comercial" },
   clientes: { page: "customers", title: "Clientes", group: "Comercial" },
   pedidos: { page: "orders", title: "Pedidos", group: "Comercial" },
+  producao: { page: "production", title: "Produção", group: "Operacional" },
   "meus-orcamentos": { page: "history", title: "Histórico de orçamentos", group: "Comercial" },
   catalogo: { page: "catalog", title: "Catálogo de iscas", group: "Administração" },
   precos: { page: "prices", title: "Tabela de preços", group: "Administração" },
@@ -347,6 +348,7 @@ async function navigate() {
   }
   state.routeHash = hash;
   const pageChanged = state.route?.page !== route.page;
+  if (pageChanged && state.route?.page === "production") leaveProduction();
   state.route = route;
   const previewDialog = byId("preview-pdf-dialog");
   if (!quotePage(route.page) && previewDialog.open) previewDialog.close();
@@ -380,6 +382,7 @@ async function navigate() {
   }
   if (route.page === "history") void loadHistory(0);
   if (route.page === "orders") void loadOrders(0);
+  if (route.page === "production") void refreshProduction(pageChanged ? 0 : productionUi.page);
   if (route.page === "customers") void loadCustomers(0);
   if (route.page === "catalog") { renderCatalog(); void loadCatalog(); }
   if (route.page === "prices") { renderPriceModels(); void loadCatalog(); }
@@ -1818,6 +1821,7 @@ function bindEvents() {
   byId("ai-discard").addEventListener("click", discardAiProposal);
   bindDraftEvents();
   bindOrderEvents();
+  bindProductionEvents();
   bindCustomerEvents();
   bindAssistant();
 }

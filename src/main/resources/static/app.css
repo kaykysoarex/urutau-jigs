@@ -483,6 +483,35 @@ input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--brand); 
 .assistant-card ul { padding-inline-start: 1.15rem; margin: .4rem 0; overflow-wrap: anywhere; }
 .assistant-card .draft-actions { margin-top: .45rem; }
 .assistant-card .button { min-height: 44px; }
+.production-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(128px, 100%), 1fr)); gap: .65rem; margin: 0 0 .85rem; }
+.production-metrics .panel-body { padding: .7rem .8rem; min-width: 0; }
+.production-metrics dt { color: var(--muted, #62626b); font-size: .83rem; font-weight: 650; }
+.production-metrics dd { margin: .12rem 0 0; overflow-wrap: anywhere; font-size: 1.28rem; font-weight: 800; }
+.production-first-metric dd, .production-first-metric button { font-size: .9rem; text-align: start; overflow-wrap: anywhere; }
+.production-first-metric button { min-height: 44px; }
+#production-filters { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
+.production-card { display: grid; gap: .4rem; overflow-wrap: anywhere; }
+.production-card .button { justify-self: start; white-space: normal; min-height: 44px; }
+.production-card-first { border-inline-start: .25rem solid var(--accent, #a33e0f); }
+.production-position { flex: none; font-size: .82rem; font-weight: 750; color: var(--accent, #a33e0f); }
+.production-badges { display: flex; flex-wrap: wrap; gap: .38rem; }
+.production-deadline[data-deadline="ATRASADO"] { background: #fbe9e6; color: #982f23; }
+.production-deadline:is([data-deadline="PROXIMO"], [data-deadline="VENCE_HOJE"]) { background: #fff0e2; color: #83350d; }
+.production-demand { font-weight: 750; }
+.production-dialog { width: min(700px, calc(100% - 1.5rem)); }
+#production-detail { display: grid; gap: .65rem; overflow-wrap: anywhere; }
+.manufacturing-groups { display: grid; gap: .55rem; min-width: 0; }
+.manufacturing-group { padding: .65rem; border: 1px solid var(--line); border-radius: .6rem; }
+.manufacturing-group h4 { margin: 0 0 .25rem; font-size: 1rem; }
+.manufacturing-group p { margin: .35rem 0 .15rem; }
+.manufacturing-colors { margin: 0; padding: 0; list-style: none; }
+.manufacturing-colors li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .15rem .7rem; padding: .3rem 0; border-top: 1px solid var(--line); }
+.manufacturing-inactive { grid-column: 1 / -1; color: #83350d; }
+.production-notes { white-space: pre-wrap; }
+@media (max-width: 540px) {
+  #production-filters { grid-template-columns: minmax(0, 1fr); }
+  .production-card .button { justify-self: stretch; }
+}
 .catalog-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr)); gap: .75rem; padding: .85rem; }
 .catalog-card { min-width: 0; padding: .85rem; border: 1px solid var(--line, #dedede); border-radius: .75rem; overflow-wrap: anywhere; }
 .catalog-card .draft-actions { margin-top: .55rem; }
