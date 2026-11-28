@@ -253,7 +253,8 @@ def spinner_selection(page):
     assert_selection(page, 2, 10)
     preview = submit_and_check_preview(page, add.click, {variants["03"]["id"]: 3, variants["08"]["id"]: 7})
     assert preview["quantity"] == 10
-    assert preview["missingPrices"] == 1
+    assert preview["missingPrices"] == 2
+    assert all(item["unitPrice"] is None for item in preview["items"])
     assert_line(page, "Spinner", 12, "03", 3)
     assert_line(page, "Spinner", 12, "08", 7)
 

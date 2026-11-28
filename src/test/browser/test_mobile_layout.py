@@ -22,7 +22,7 @@ ROUTES = {
     "history": "#history-content tbody tr",
     "production": "#production-list .production-card",
     "catalog": "#catalog-content .catalog-card, #catalog-content tbody tr",
-    "prices": "#price-content tbody tr input",
+    "prices": "#price-content summary",
     "settings": "#settings-threshold:not(:disabled)",
 }
 SCREENSHOTS = {(320, 720), (390, 844), (844, 390), (1440, 900)}
@@ -237,6 +237,10 @@ def exercise_ai(page):
 
 def measure_route(audit, page, name, mobile):
     open_route(page, name)
+    if name == "prices":
+        first = page.locator(".price-model-card").first
+        if first.get_attribute("open") is None:
+            first.locator("summary").click()
     audit.measure(page, name, f'[data-view="{name}"]', mobile)
     audit.screenshot(page, name)
     if name == "manual" and audit.width in (320, 390):
@@ -313,7 +317,11 @@ def exercise_mobile_interactions(audit, page):
     page.route("**/api/catalog", hold_catalog)
     try:
         open_route(page, "prices")
-        price = page.locator("#price-content input").first
+        model = page.locator(".price-model-card").first
+        if model.get_attribute("open") is None:
+            model.locator("summary").click()
+        row = model.locator(".price-weight-list .price-editor").first
+        price = row.locator("input").first
         price.focus()
         price.fill("19,80")
         price.evaluate("(node) => { window.auditedPriceInput = node; }")
@@ -326,7 +334,7 @@ def exercise_mobile_interactions(audit, page):
             "(node) => node === document.activeElement && node === window.auditedPriceInput")
         problems = [] if focused else ["campo de preço perdeu o foco ou foi recriado durante a digitação"]
         expect(price).to_have_value("19,80")
-        expect(page.locator("#price-save")).to_be_enabled()
+        expect(row.get_by_role("button", name="Salvar preços", exact=False)).to_be_enabled()
         audit.measure(page, "precos-durante-edicao", '[data-view="prices"]', True, extra=problems)
     finally:
         page.unroute("**/api/catalog", hold_catalog)

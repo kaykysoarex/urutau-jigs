@@ -330,14 +330,8 @@
       </section>
 
       <section id="page-prices" data-view="prices" aria-labelledby="prices-title" hidden>
-        <div class="page-heading"><div><h1 id="prices-title">Tabela de preços</h1><p>Defina os valores de consumidor final e lojista para cada combinação de isca.</p></div></div>
-        <section class="panel" aria-label="Preços do catálogo">
-          <form id="price-form">
-            <div class="panel-toolbar price-toolbar"><label class="field"><span>Modelo</span><select id="price-model"><option value="">Carregando…</option></select></label><button id="price-save" class="button primary" type="submit" disabled><svg class="icon"><use href="/icons.svg#save"/></svg>Salvar preços</button></div>
-            <div id="price-content" aria-live="polite"></div>
-            <p id="price-error" class="form-error price-error" hidden></p>
-          </form>
-        </section>
+        <div class="page-heading"><div><h1 id="prices-title">Tabela de preços</h1><p>Defina os valores de consumidor final e lojista por modelo e gramatura.</p></div></div>
+        <section id="price-content" class="price-model-list" aria-label="Preços do catálogo"></section>
       </section>
 
       <section id="page-settings" data-view="settings" aria-labelledby="settings-title" hidden>
@@ -500,12 +494,24 @@
     <div class="dialog-actions"><button id="production-commercial" class="button secondary" type="button" hidden>Abrir em Pedidos</button></div>
   </dialog>
 
+  <dialog id="price-confirm" class="catalog-dialog" aria-labelledby="price-confirm-title">
+    <form id="price-confirm-form">
+      <div class="dialog-heading"><h2 id="price-confirm-title">Confirmar alteração de preços</h2></div>
+      <div class="dialog-body"><div id="price-confirm-scope"></div><p id="price-error" class="form-error" role="alert" hidden></p></div>
+      <div class="dialog-actions">
+        <button id="price-cancel" type="button" class="button secondary" autofocus>Cancelar</button>
+        <button id="price-accept" type="submit" class="button primary">Confirmar alteração</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="catalog-dialog" class="catalog-dialog" aria-labelledby="catalog-dialog-heading">
     <form id="catalog-form">
       <div class="dialog-heading"><div><h2 id="catalog-dialog-heading">Novo modelo</h2><p>Cadastre as combinações de gramatura e cor da isca.</p></div><button id="catalog-close" class="icon-button" type="button" aria-label="Fechar"><svg class="icon"><use href="/icons.svg#x"/></svg></button></div>
       <div class="dialog-body">
         <div class="catalog-name-line"><label class="field"><span>Nome do modelo <span class="required" aria-hidden="true">*</span></span><input id="catalog-name" maxlength="120" required placeholder="Nome da isca" autocomplete="off" autocapitalize="words"></label><label class="check-field"><input id="catalog-active" type="checkbox" checked>Modelo ativo</label></div>
         <div id="catalog-initial-prices" class="catalog-price-inputs">
+          <p id="catalog-price-guide" class="catalog-price-guide" hidden>Preços específicos para as novas gramaturas. Deixe em branco para usar os padrões do modelo.</p>
           <label class="field"><span>Preço consumidor final (R$)</span><input id="catalog-retail" inputmode="decimal" maxlength="14" placeholder="0,00"></label>
           <label class="field"><span>Preço lojista (R$)</span><input id="catalog-wholesale" inputmode="decimal" maxlength="14" placeholder="0,00"></label>
         </div>

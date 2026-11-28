@@ -39,7 +39,8 @@ const state = {
   catalogModel: null,
   catalogVariants: [],
   catalogSaving: false,
-  priceEdits: new Map(),
+  priceProposal: null,
+  priceOpenModel: null,
   priceBusy: false,
   settingsBusy: false,
   conversation: null,
@@ -1222,8 +1223,11 @@ function renderCatalog() {
     prices.addEventListener("click", () => {
       history.pushState(null, "", "#precos");
       void navigate().then(() => {
-        byId("price-model").value = String(product.id);
-        renderPrices();
+        state.priceOpenModel = product.id;
+        renderPriceModels();
+        const model = byId("price-content").querySelector(`[data-model="${product.id}"] > summary`);
+        model?.focus();
+        model?.scrollIntoView({ block: "nearest" });
       });
     });
     tools.append(edit, prices);
@@ -1244,7 +1248,7 @@ function openCatalogEditor(product = null) {
   byId("catalog-active").checked = product?.active ?? true;
   byId("catalog-weights").value = "";
   byId("catalog-colors").value = "";
-  byId("catalog-initial-prices").hidden = Boolean(product);
+  byId("catalog-price-guide").hidden = !product;
   for (const id of ["catalog-retail", "catalog-wholesale"]) {
     byId(id).value = "";
     byId(id).required = !product;
@@ -1257,6 +1261,9 @@ function openCatalogEditor(product = null) {
 
 function renderCatalogVariants() {
   const wrapper = byId("dialog-variants");
+  const existing = state.catalogModel;
+  const registered = new Set(existing?.variants.map(variant => variant.weight));
+  byId("catalog-initial-prices").hidden = Boolean(existing) && !state.catalogVariants.some(variant => !registered.has(variant.weight));
   if (!state.catalogVariants.length) {
     wrapper.replaceChildren();
     return;
@@ -1338,13 +1345,16 @@ async function saveProduct(event) {
   formFeedback("catalog-error", "");
   setCatalogSaving(true);
   try {
-    const prices = model ? null : {
-      retailPrice: normalizeMoney(byId("catalog-retail").value),
-      wholesalePrice: normalizeMoney(byId("catalog-wholesale").value)
-    };
-    if (!model && (!prices.retailPrice || !prices.wholesalePrice || !state.catalogVariants.length)) {
+    const visiblePrices = !byId("catalog-initial-prices").hidden;
+    const retailPrice = visiblePrices ? normalizeMoney(byId("catalog-retail").value) : null;
+    const wholesalePrice = visiblePrices ? normalizeMoney(byId("catalog-wholesale").value) : null;
+    if (!model && (!retailPrice || !wholesalePrice || !state.catalogVariants.length)) {
       throw new Error("Informe os dois preços e inclua pelo menos uma combinação.");
     }
+    if (Boolean(retailPrice) !== Boolean(wholesalePrice)) {
+      throw new Error("Preencha os dois preços específicos ou deixe ambos em branco para usar o padrão do modelo.");
+    }
+    const prices = retailPrice ? { retailPrice, wholesalePrice } : null;
     await api(model ? `/api/catalog/${model.id}` : "/api/catalog", {
       method: model ? "PUT" : "POST", body: { name, active, variants: state.catalogVariants, prices, expectedVersion: model?.version ?? null }
     });
@@ -1359,94 +1369,126 @@ async function saveProduct(event) {
   }
 }
 
+const priceTiers = [
+  { label: "Consumidor final", flag: "setRetail", field: "retailPrice", values: "retailValues", standard: "defaultRetailPrice" },
+  { label: "Lojista", flag: "setWholesale", field: "wholesalePrice", values: "wholesaleValues", standard: "defaultWholesalePrice" }
+];
+
 function renderPriceModels() {
-  const select = byId("price-model");
-  const products = (state.catalog ?? []).filter(product => product.variants.length);
-  const choices = products.map(product => [product.id, product.active ? product.name : `${product.name} (inativo)`]);
-  setOptions(select, choices, state.catalog ? "Selecione o modelo" : state.catalogError ? "Catálogo indisponível" : "Carregando…", select.value);
-  if (!select.value && products.length) select.value = String(products[0].id);
-  select.disabled = !products.length || state.priceBusy;
-  renderPrices();
+  const content = byId("price-content");
+  const models = (state.catalog ?? []).filter(model => model.weightPrices.length);
+  if (!models.length) {
+    content.replaceChildren(emptyState(state.catalogError ? "Catálogo indisponível" : "Nenhum modelo disponível",
+      state.catalogError ?? "As gramaturas do catálogo aparecem aqui para configuração dos preços.", "tag"));
+    return;
+  }
+  const previous = new Map([...content.querySelectorAll(".price-model-card")].map(card => [Number(card.dataset.model), card]));
+  for (const model of models) {
+    let card = previous.get(model.id);
+    if (card?.dataset.version !== String(model.version)) {
+      const fresh = priceModelCard(model);
+      fresh.open = card?.open ?? false;
+      if (card) card.replaceWith(fresh);
+      else content.append(fresh);
+      card = fresh;
+    }
+    if (state.priceOpenModel === model.id) card.open = true;
+    previous.delete(model.id);
+  }
+  for (const obsolete of previous.values()) obsolete.remove();
+  content.querySelector(":scope > :not(.price-model-card)")?.remove();
+  state.priceOpenModel = null;
 }
 
-function editPrice(variant, field, value) {
-  const current = state.priceEdits.get(variant.id) ?? { variant };
-  current.variant = variant;
-  const original = priceInputValue(variant[field]);
-  if (value === original) delete current[field];
-  else current[field] = value;
-  if (current.retailPrice === undefined && current.wholesalePrice === undefined) state.priceEdits.delete(variant.id);
-  else state.priceEdits.set(variant.id, current);
-  byId("price-save").disabled = !state.priceEdits.size || state.priceBusy;
+function priceModelCard(model) {
+  const card = element("details", "price-model-card");
+  card.dataset.model = model.id;
+  card.dataset.version = model.version;
+  const summary = element("summary", "price-model-summary");
+  summary.append(element("strong", "", model.active ? model.name : model.name + " (inativo)"));
+  const defaults = element("span", "price-model-defaults");
+  for (const tier of priceTiers) {
+    defaults.append(element("span", "", tier.label + " padrão: " + priceLabel(model[tier.standard])));
+  }
+  summary.append(defaults);
+  const divergent = model.weightPrices.filter(row => priceTiers.some(tier => row[tier.values].length > 1)).length;
+  if (divergent) summary.append(element("span", "price-divergence", "Preços divergentes · " + divergent + (divergent === 1 ? " gramatura" : " gramaturas")));
+  card.append(summary);
+  const weights = element("div", "price-weight-list");
+  model.weightPrices.forEach(row => weights.append(priceEditor(model, row)));
+  card.append(priceEditor(model, null), weights);
+  return card;
+}
+
+function priceEditor(model, row) {
+  const bulk = !row;
+  const container = element("section", "price-editor" + (bulk ? " price-editor-bulk" : ""));
+  const heading = element("h3", "", bulk ? "Preços padrão do modelo" : row.weight + " g");
+  const count = bulk ? model.weightPrices.reduce((total, weight) => total + weight.combinations, 0) : row.combinations;
+  container.append(heading, element("small", "", bulk ? model.weightPrices.length + " gramaturas · " + count + " combinações" : count + " combinações"));
+  const form = element("form", "price-editor-form");
+  const save = element("button", "button primary", bulk ? "Aplicar a todas as gramaturas" : "Salvar gramatura");
+  save.type = "submit";
+  if (row) save.setAttribute("aria-label", "Salvar preços de " + model.name + " " + row.weight + " g");
+  save.disabled = !bulk;
+  const error = element("p", "form-error price-editor-error");
+  error.hidden = true;
+  error.setAttribute("role", "alert");
+  const fields = priceTiers.map(tier => {
+    const values = bulk ? [model[tier.standard]] : row[tier.values];
+    const label = element("label", "field");
+    const input = document.createElement("input");
+    input.type = "text";
+    input.inputMode = "decimal";
+    input.autocomplete = "off";
+    input.maxLength = 13;
+    input.placeholder = values.length > 1 ? "Preço divergente" : "Sem preço";
+    input.value = values.length === 1 ? priceInputValue(values[0]) : "";
+    input.setAttribute("aria-label", tier.label + " (R$), " + model.name + ", " + (bulk ? "padrão" : row.weight + " g"));
+    label.append(element("span", "", tier.label + " (R$)"), input);
+    form.append(label);
+    if (values.length > 1) {
+      const groups = values.map(value => {
+        const colors = model.variants.filter(variant => variant.weight === row.weight && variant[tier.field] === value)
+          .map(variant => variant.color);
+        return priceLabel(value) + " (cores " + colors.join(", ") + ")";
+      });
+      label.append(element("small", "price-divergence", "Divergência: " + groups.join(" · ")));
+    }
+    return { tier, input, original: input.value };
+  });
+  const changed = ({ input, original }) => input.value.trim() !== original;
+  if (!bulk) form.addEventListener("input", () => { save.disabled = !fields.some(changed); });
+  form.append(save, error);
+  form.addEventListener("submit", event => {
+    event.preventDefault();
+    if (state.priceBusy) return;
+    error.hidden = true;
+    try {
+      const prices = {};
+      for (const field of fields) {
+        const value = normalizeMoney(field.input.value);
+        // A missing default never clears existing prices unless the administrator explicitly changed the field.
+        prices[field.tier.flag] = bulk ? value !== null || changed(field) : changed(field);
+        prices[field.tier.field] = value;
+      }
+      if (!priceTiers.some(tier => prices[tier.flag])) throw new Error("Informe pelo menos um preço para aplicar.");
+      showPriceProposal(model, row, prices, count);
+    } catch (problem) {
+      error.textContent = problem.message;
+      error.hidden = false;
+    }
+  });
+  container.append(form);
+  return container;
 }
 
 function priceInputValue(price) {
   return price == null ? "" : Number(price).toFixed(2).replace(".", ",");
 }
 
-function syncPriceInput(input, variant, field) {
-  const value = state.priceEdits.get(variant.id)?.[field] ?? priceInputValue(variant[field]);
-  if (input !== document.activeElement && input.value !== value) input.value = value;
-  input.disabled = state.priceBusy;
-}
-
-function renderPrices() {
-  const product = state.catalog?.find(entry => String(entry.id) === byId("price-model").value);
-  const content = byId("price-content");
-  byId("price-save").disabled = !state.priceEdits.size || state.priceBusy;
-  if (!product) {
-    content.replaceChildren(emptyState(state.catalogError ? "Catálogo indisponível" : "Nenhum modelo disponível", state.catalogError ?? "As combinações cadastradas aparecem aqui para configuração dos preços.", "tag", state.catalog ? link("Abrir catálogo", "#catalogo") : null));
-    return;
-  }
-  const variants = [...product.variants].sort((first, second) => first.weight - second.weight || first.color.localeCompare(second.color, "pt-BR"));
-  const caption = `Preços de ${product.name}`;
-  const currentTable = content.querySelector(".price-table");
-  const currentRows = currentTable?.tBodies[0].rows;
-  if (currentTable?.dataset.productId === String(product.id) && currentRows?.length === variants.length
-    && variants.every((variant, index) => currentRows[index].dataset.variantId === String(variant.id))) {
-    currentTable.setAttribute("aria-label", caption);
-    variants.forEach((variant, index) => {
-      const row = currentRows[index];
-      const pending = state.priceEdits.get(variant.id);
-      if (pending) pending.variant = variant;
-      const [retail, wholesale] = row.querySelectorAll(".price-entry input");
-      syncPriceInput(retail, variant, "retailPrice");
-      syncPriceInput(wholesale, variant, "wholesalePrice");
-      const status = row.querySelector(".state-pill");
-      const active = variant.active && product.active;
-      status.classList.toggle("active", active);
-      const statusText = active ? "Ativa" : "Inativa";
-      if (status.textContent !== statusText) status.textContent = statusText;
-    });
-    return;
-  }
-  const inputFor = (variant, field, label) => {
-    const input = document.createElement("input");
-    input.type = "text";
-    input.inputMode = "decimal";
-    input.autocomplete = "off";
-    input.maxLength = 13;
-    input.placeholder = "Sem preço";
-    syncPriceInput(input, variant, field);
-    input.setAttribute("aria-label", `Preço de ${label} em reais, ${variant.weight} g, cor ${variant.color}`);
-    input.addEventListener("input", () => {
-      const latest = state.catalog?.find(entry => entry.id === product.id)?.variants.find(entry => entry.id === variant.id);
-      if (latest) editPrice(latest, field, input.value);
-    });
-    return input;
-  };
-  const rows = variants.map(variant => [
-    [`${variant.weight} g`, "cell-name"],
-    [variant.color],
-    [inputFor(variant, "retailPrice", "consumidor final"), "price-entry"],
-    [inputFor(variant, "wholesalePrice", "lojista"), "price-entry"],
-    [element("span", `state-pill${variant.active && product.active ? " active" : ""}`, variant.active && product.active ? "Ativa" : "Inativa")]
-  ]);
-  const listing = table(caption, [["Gramatura"], ["Cor"], ["Consumidor final (R$)"], ["Lojista (R$)"], ["Combinação"]], rows, "price-table");
-  const listingTable = listing.querySelector("table");
-  listingTable.dataset.productId = String(product.id);
-  variants.forEach((variant, index) => { listingTable.tBodies[0].rows[index].dataset.variantId = String(variant.id); });
-  content.replaceChildren(listing);
+function priceLabel(price) {
+  return price == null ? "A definir" : moneyFormat.format(price);
 }
 
 function normalizeMoney(value) {
@@ -1456,37 +1498,50 @@ function normalizeMoney(value) {
   return amount;
 }
 
+function showPriceProposal(model, row, prices, count) {
+  const weights = row ? [row] : model.weightPrices;
+  const body = byId("price-confirm-scope");
+  const list = element("ul", "price-confirm-list");
+  for (const weight of weights) {
+    const values = priceTiers.filter(tier => prices[tier.flag]).map(tier =>
+      tier.label + " " + weight[tier.values].map(priceLabel).join(" / ") + " → " + priceLabel(prices[tier.field]));
+    list.append(element("li", "", weight.weight + " g (" + weight.combinations + ") · " + values.join(" · ")));
+  }
+  body.replaceChildren(element("p", "", model.name + " · " + weights.length + (weights.length === 1 ? " gramatura · " : " gramaturas · ") + count
+    + " combinações, incluindo cores inativas."), list);
+  if (!row) body.append(element("p", "", "Os valores informados também serão os padrões para novas gramaturas."));
+  formFeedback("price-error", "");
+  state.priceProposal = { id: model.id, version: model.version, defaults: row ? null : prices,
+    weights: weights.map(weight => ({ weight: weight.weight, prices })) };
+  byId("price-confirm").showModal();
+}
+
 async function savePrices(event) {
   event.preventDefault();
-  if (!state.priceEdits.size || state.priceBusy) return;
-  formFeedback("price-error", "");
-  let variants;
-  try {
-    variants = [...state.priceEdits].map(([id, edit]) => ({
-      id,
-      retailPrice: edit.retailPrice === undefined ? edit.variant.retailPrice : normalizeMoney(edit.retailPrice),
-      wholesalePrice: edit.wholesalePrice === undefined ? edit.variant.wholesalePrice : normalizeMoney(edit.wholesalePrice)
-    }));
-  } catch (error) {
-    formFeedback("price-error", error.message);
-    return;
-  }
+  const proposal = state.priceProposal;
+  if (!proposal || state.priceBusy) return;
   state.priceBusy = true;
-  const save = byId("price-save");
-  save.lastChild.textContent = "Salvando…";
-  renderPriceModels();
+  const save = byId("price-accept");
+  const cancel = byId("price-cancel");
+  formFeedback("price-error", "");
+  save.disabled = cancel.disabled = true;
+  save.textContent = "Salvando…";
   try {
-    await api("/api/catalog/prices", { method: "PUT", body: { variants } });
-    state.priceEdits.clear();
+    await api("/api/catalog/prices/weights", { method: "PUT", body: { models: [proposal] } });
+    byId("price-confirm").close();
     toast("Preços atualizados.");
     await loadCatalog();
-    if (state.route?.page === "manual") await updatePreview();
+    byId("price-content").querySelector('[data-model="' + proposal.id + '"] > summary')?.focus();
   } catch (error) {
     formFeedback("price-error", error.message);
+    if (error.status === 409) {
+      await loadCatalog();
+      return;
+    }
   } finally {
     state.priceBusy = false;
-    save.lastChild.textContent = "Salvar preços";
-    renderPriceModels();
+    save.disabled = cancel.disabled = false;
+    save.textContent = "Confirmar alteração";
   }
 }
 
@@ -1811,8 +1866,10 @@ function bindEvents() {
   byId("catalog-dialog").addEventListener("cancel", event => { if (state.catalogSaving) event.preventDefault(); });
   byId("add-combinations").addEventListener("click", addCombinations);
   byId("catalog-form").addEventListener("submit", saveProduct);
-  byId("price-model").addEventListener("change", renderPrices);
-  byId("price-form").addEventListener("submit", savePrices);
+  byId("price-confirm-form").addEventListener("submit", savePrices);
+  byId("price-cancel").addEventListener("click", () => byId("price-confirm").close());
+  byId("price-confirm").addEventListener("cancel", event => { if (state.priceBusy) event.preventDefault(); });
+  byId("price-confirm").addEventListener("close", () => { state.priceProposal = null; });
   byId("settings-form").addEventListener("submit", saveSettings);
   byId("ai-new").addEventListener("click", () => void startConversation());
   byId("chat-form").addEventListener("submit", sendMessage);
