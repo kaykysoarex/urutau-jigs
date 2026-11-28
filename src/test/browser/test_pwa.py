@@ -19,8 +19,8 @@ from test_quote_confirmation import assert_clean_form
 
 
 WORKER = "/service-worker.js"
-CACHE = "urutau-jigs-pwa-0.2.5"
-NEXT_CACHE = "urutau-jigs-pwa-0.2.5-browser-next"
+CACHE = "urutau-jigs-pwa-0.3.0"
+NEXT_CACHE = "urutau-jigs-pwa-0.3.0-browser-next"
 UNRELATED_CACHE = "qa-cache-fora-da-pwa"
 PNG_ICONS = {
     "/icons/icon-192.png": 192,
@@ -205,7 +205,7 @@ def create_issued_quote(page):
 
 def check_connectivity_and_auth(page, context, server, variant, quote_number):
     assert page.evaluate("""async number => {
-        const paths = ["/api/session", "/api/catalog", "/api/ai", "/api/quotes", `/api/quotes/${number}/pdf`];
+        const paths = ["/api/session", "/api/catalog", "/api/ai", "/api/quotes", "/api/production", `/api/quotes/${number}/pdf`];
         const statuses = await Promise.all(paths.map(path => fetch(path).then(response => response.ok)));
         return statuses.every(Boolean);
     }""", quote_number)

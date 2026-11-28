@@ -1,7 +1,7 @@
 "use strict";
 
 const CACHE_PREFIX = "urutau-jigs-pwa-";
-const CACHE_NAME = "urutau-jigs-pwa-0.2.5";
+const CACHE_NAME = "urutau-jigs-pwa-0.3.0";
 const OFFLINE_PAGE = "/offline.html";
 const PUBLIC_TYPES = new Map([
   [OFFLINE_PAGE, ["text/html"]],

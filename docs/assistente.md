@@ -15,9 +15,10 @@ A assistente flutuante consulta os dados do painel e prepara operações para re
 | Configurações | Mínimo vigente de lojista | Alterar o mínimo | A configuração comercial disponível é o mínimo de lojista. |
 | Documentos | Abrir, baixar e compartilhar PDF existente. Abrir prévia de rascunho. | Emissão definitiva depende da aprovação da proposta | O administrador controla o compartilhamento. |
 | Indicadores | Novos clientes, conversão, confirmações, entregas, valores comerciais, contagens, rankings e comparação mensal | — | Períodos usam America/Sao_Paulo. Os valores representam pedidos confirmados vigentes. |
+| Produção | Fila FIFO, primeiro pedido, iscas demandadas, prazos e detalhes de fabricação | — | A consulta usa os itens históricos. O registro individual de fabricação fica para uma etapa posterior. |
 | Navegação | Abrir cliente, pedido, modelo, rascunho ou seção do painel | — | Atalhos apresentam os registros acessíveis pela sessão administrativa. |
 
-Os relatórios exibem totais conforme a data do evento considerado, como emissão, confirmação ou entrega. Consultas resumidas exibem uma amostra e indicam a tela em que o administrador pode consultar os demais resultados. Estoque, produção detalhada, finanças e infraestrutura ficam fora das ferramentas.
+Os relatórios exibem totais conforme a data do evento considerado, como emissão, confirmação ou entrega. Consultas resumidas exibem uma amostra e indicam a tela em que o administrador pode consultar os demais resultados. Estoque, registro de fabricação, finanças e infraestrutura ficam fora das ferramentas.
 
 ## Ferramentas e parâmetros
 
@@ -31,6 +32,7 @@ O orquestrador interpreta a solicitação e chama um serviço Java específico. 
 | `CATALOG`, `PRODUCT_CREATE`, `PRODUCT_UPDATE` | Produto, gramaturas, códigos de cor, estado, nome e preços iniciais |
 | `PRICES`, `PRICE_UPDATE`, `SETTINGS`, `SETTINGS_UPDATE` | Modelo, filtro de variante, tabela, valor decimal e mínimo em unidades |
 | `INDICATORS` | Período, comparação mensal e ranking |
+| `PRODUCTION_QUEUE`, `PRODUCTION_FIRST`, `PRODUCTION_DETAILS`, `PRODUCTION_LINK` | Filtro de prazo, pesquisa de cliente ou número de pedido quando aplicável. Consultas de leitura pelo [serviço de produção](producao.md). |
 
 ## Confirmação e auditoria
 
@@ -48,4 +50,6 @@ Os endpoints da assistente exigem papel administrativo, cookie de sessão e CSRF
 - “Qual foi o último pedido do Marcos?” e “Quanto ele já comprou?”
 - “Duplique o orçamento número 00015.”
 - “Mostre os pedidos em produção.”
+- “Mostre os detalhes de fabricação do primeiro pedido.”
+- “Quais pedidos possuem prazo para hoje?”
 - “Quanto vendemos neste mês?”
