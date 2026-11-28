@@ -11,7 +11,7 @@ A assistente flutuante consulta os dados do painel e prepara operações para re
 | Rascunhos | Listar, recuperar e estimar, sempre pelo administrador atual | Criar, editar itens e observações, vincular cliente, transferir e descartar | A revisão pendente do gerador deve ser concluída antes da edição pela assistente. |
 | Pedidos | Estado, atrasos, prazo, confirmação, entrega e eventos | Confirmar, cancelar, entregar e atualizar prazo ou observações nos estados permitidos | Operações abrangem um registro por proposta. Cancelamento pede justificativa. |
 | Catálogo | Modelos ativos e inativos, gramaturas, cores e disponibilidade | Cadastrar, renomear, adicionar combinações e alterar estados de modelos e variantes | Gramaturas são inteiras em gramas. Até 100 combinações por proposta. No chat, indique exceções como “exceto 15g cor 03”. No painel, refine os pares pela prévia visual. |
-| Preços | Faixas por modelo e tabela e valores por variante | Alterar ou ajustar preços em lote para modelos mencionados | Uma tabela por proposta. Todos os preços afetados são exibidos. |
+| Preços | Valores padrão por modelo, valores por gramatura e divergências legadas | Alterar uma gramatura ou aplicar preços a todas as gramaturas dos modelos mencionados | Uma tabela por proposta. O cartão mostra o valor anterior, o novo e as combinações afetadas. |
 | Configurações | Mínimo vigente de lojista | Alterar o mínimo | A configuração comercial disponível é o mínimo de lojista. |
 | Documentos | Abrir, baixar e compartilhar PDF existente. Abrir prévia de rascunho. | Emissão definitiva depende da aprovação da proposta | O administrador controla o compartilhamento. |
 | Indicadores | Novos clientes, conversão, confirmações, entregas, valores comerciais, contagens, rankings e comparação mensal | — | Períodos usam America/Sao_Paulo. Os valores representam pedidos confirmados vigentes. |
@@ -30,7 +30,7 @@ O orquestrador interpreta a solicitação e chama um serviço Java específico. 
 | `RECORD`, `ORDERS`, `QUOTES`, `ORDER_CONFIRM`, `ORDER_CANCEL`, `ORDER_DELIVER`, `ORDER_TERMS` | Número, estado, intervalo, prazo, observação ou justificativa |
 | `DRAFTS`, `DRAFT`, `DRAFT_CREATE`, `DRAFT_DUPLICATE`, `DRAFT_UPDATE`, `DRAFT_DISCARD`, `ISSUE` | UUID de rascunho do administrador, origem, cliente, variantes, quantidades e instrução |
 | `CATALOG`, `PRODUCT_CREATE`, `PRODUCT_UPDATE` | Produto, gramaturas, códigos de cor, estado, nome e preços iniciais |
-| `PRICES`, `PRICE_UPDATE`, `SETTINGS`, `SETTINGS_UPDATE` | Modelo, filtro de variante, tabela, valor decimal e mínimo em unidades |
+| `PRICES`, `PRICE_UPDATE`, `SETTINGS`, `SETTINGS_UPDATE` | Modelo, gramatura, tabela, valor decimal ou padrão vigente e mínimo em unidades |
 | `INDICATORS` | Período, comparação mensal e ranking |
 | `PRODUCTION_QUEUE`, `PRODUCTION_FIRST`, `PRODUCTION_DETAILS`, `PRODUCTION_LINK` | Filtro de prazo, pesquisa de cliente ou número de pedido quando aplicável. Consultas de leitura pelo [serviço de produção](producao.md). |
 
@@ -42,11 +42,16 @@ A migração V10 cria a auditoria compartilhada. O campo de origem identifica al
 
 Os endpoints da assistente exigem papel administrativo, cookie de sessão e CSRF para operações de escrita. As respostas usam `no-store`. A sessão mantém até 40 mensagens, aceita até 18 solicitações por minuto e limita cada mensagem a 1.000 caracteres. A seleção de ferramentas aceita apenas identificadores registrados. As requisições externas usam o timeout do adaptador. As operações comerciais não usam respostas brutas do provedor como código, SQL ou parâmetros de infraestrutura.
 
+Na edição de preços, o Java resolve e valida modelos e gramaturas. A proposta absoluta para todas as gramaturas também atualiza o padrão da tabela selecionada. Aumentos e reduções relativos usam o preço vigente de cada gramatura. Gramaturas com preço divergente ou ausente precisam de um valor final explícito. Quando a solicitação menciona uma cor como escopo de alteração, a assistente pede modelo e gramatura. Se o catálogo mudar após a proposta, o administrador precisa revisar o alcance novamente.
+
 ## Exemplos
 
 - “Cadastre um novo modelo chamado Isca Exemplo, com gramaturas de 10g, 15g e 20g, cores 01 até 06, preço de lojista R$ 19,00 e consumidor final R$ 30,00.”
 - “Adicione a cor 10 em todas as gramaturas da Urunaja.”
-- “Altere o preço de lojista da Urunaja para R$ 18,00.”
+- “Altere o preço de lojista da Urunaja para R$ 18,00 em todas as gramaturas.”
+- “Altere apenas o preço da Urunaja de 10g.” Em seguida informe a tabela e o valor.
+- “Qual é o preço de cada gramatura da Urumax G1?”
+- “Aplique o mesmo preço a todas as gramaturas do Spinner.” Informe a tabela e o valor, ou indique que deseja usar o padrão vigente daquela tabela.
 - “Qual foi o último pedido do Marcos?” e “Quanto ele já comprou?”
 - “Duplique o orçamento número 00015.”
 - “Mostre os pedidos em produção.”

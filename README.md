@@ -23,12 +23,12 @@ O JAR distribuído requer Java 21. Para compilar o código-fonte, instale també
            [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2], 'Process')
        }
    }
-   java -jar ..\urutau-jigs-0.3.0.jar
+   java -jar ..\urutau-jigs-0.3.1.jar
    ```
 
 3. Abra [o painel local](http://127.0.0.1:8080/) e entre com uma das contas. Confira os valores em **Tabela de preços**. Os preços iniciais do catálogo oficial são cadastrados pelo Flyway. O H2 guarda os registros em `data/` da pasta onde a aplicação foi iniciada.
 
-Use `mvn spring-boot:run` para executar pelo código-fonte. Use `mvn clean verify` para executar os testes e gerar o JAR em `target/urutau-jigs-0.3.0.jar`. Em Linux, exporte as mesmas variáveis no ambiente do processo e execute o JAR com Java 21.
+Use `mvn spring-boot:run` para executar pelo código-fonte. Use `mvn clean verify` para executar os testes e gerar o JAR em `target/urutau-jigs-0.3.1.jar`. Em Linux, exporte as mesmas variáveis no ambiente do processo e execute o JAR com Java 21.
 
 ## Instalar o URUTAU JIGS como aplicativo
 
@@ -98,7 +98,7 @@ Mantenha uma réplica da aplicação, pois as sessões administrativas e as conv
 ## Catálogo e preços
 
 - A carga inicial contém nove modelos e 124 combinações de gramatura e cor. A migração utiliza os dados oficiais verificados. [Catálogo](https://catalogo-urutau.vercel.app/) · [Dados canônicos](https://catalogo-urutau.vercel.app/catalog-data.js) · [Validação da página de origem](https://catalogo-urutau.vercel.app/script.js)
-- Cada combinação guarda os preços de consumidor final e lojista de forma independente. Campos em branco representam preço pendente. A emissão exige um preço na tabela aplicada para cada item.
+- O preço de consumidor final e o de lojista são definidos por modelo e gramatura. Todas as cores daquela gramatura usam os mesmos valores. Campos em branco indicam preço pendente. A emissão exige um preço válido na tabela aplicada a cada item.
 - Com o mínimo padrão de 30 unidades, orçamentos de 1 a 29 iscas usam a tabela de consumidor final e orçamentos a partir de 30 iscas usam a tabela de lojista. O back-end soma as unidades de todas as combinações e aplica a tabela correspondente a todos os itens. Se a quantidade voltar a ficar abaixo do mínimo, a tabela de consumidor final volta a valer. Altere o mínimo em **Configurações**.
 - A remoção cadastral preserva o registro da combinação como inativo. Reativar a mesma combinação restaura o seu cadastro com o mesmo identificador.
 - A emissão compara a revisão com os dados atuais do catálogo antes de gravar o orçamento. Cada emissão grava em uma transação os dados do cliente e os valores e descrições aplicados. A numeração vem do banco, e cada orçamento começa com status **Pendente**. O PDF é gerado a partir desses dados históricos.
@@ -119,7 +119,11 @@ Mantenha uma réplica da aplicação, pois as sessões administrativas e as conv
 
 A migração Flyway V5 preenche os campos vazios de cada tabela nas gramaturas e cores já cadastradas para esses modelos. Preços preenchidos são preservados, e divergências em relação à tabela inicial aparecem no log da migração. No Railway, o primeiro deploy da 0.1.7 aplica a V5 com a configuração de banco já existente.
 
-Edite os valores vigentes em **Tabela de preços**. O banco é a fonte usada pelo Java para orçamentos manuais e revisados a partir da URUTAU AI. Reinícios e novos deploys preservam as alterações do painel, e PDFs emitidos mantêm os valores registrados na emissão. A informação de que o frete está fora do orçamento aparece no resumo.
+Em **Tabela de preços**, expanda o modelo para editar uma gramatura e clique em **Salvar gramatura**. Para atualizar todas, use os campos de preços padrão e clique em **Aplicar a todas as gramaturas**. Revise os valores anteriores, os novos e a quantidade de combinações afetadas antes de confirmar. A aplicação em lote também grava o padrão usado nas próximas gramaturas. Se um padrão estiver em branco, seu campo pode permanecer vazio para aplicar somente a outra tabela.
+
+Ao adicionar uma cor, o catálogo herda os preços da gramatura. Ao cadastrar novas gramaturas, deixe os campos em branco para usar os padrões do modelo, ou informe os dois preços específicos. Em um modelo com preços legados diferentes, a V12 inicializa cada padrão somente quando há um valor único em todas as suas combinações. A migração preserva os preços já cadastrados. Quando cores da mesma gramatura têm preços diferentes ou apenas parte delas tem preço, a tabela exibe os valores e as cores afetadas. Até a resolução, novos cálculos mostram **A definir** para a tabela divergente, a emissão fica bloqueada caso ela seja necessária e a inclusão de uma nova cor naquela gramatura exige resolução prévia.
+
+O Java usa os preços do banco para os dois geradores. Reinícios e deploys preservam as alterações do painel. PDFs, orçamentos e pedidos anteriores mantêm os valores da emissão. O frete permanece fora do orçamento.
 
 ## Navegação comercial e URUTAU AI
 
@@ -137,17 +141,17 @@ Abra **Operacional → Produção** para ver os pedidos confirmados em ordem de 
 
 Em **Ver detalhes da produção**, consulte as combinações já confirmadas e use **Abrir em Pedidos** para acessar o registro comercial. A disponibilidade atual do catálogo aparece como aviso nos itens históricos. A URUTAU AI também consulta a fila e pode abrir seus detalhes. A [documentação de produção](docs/producao.md) descreve os endpoints, as regras de prazo e a estrutura para futuras agregações.
 
-A versão 0.3.0 usa o esquema Flyway V11 e as variáveis existentes no Railway.
+A versão 0.3.1 aplica a migração Flyway V12 ao iniciar. A configuração do Railway usa as mesmas variáveis de ambiente.
 
 ## Assistente administrativa e catálogo
 
 Abra a URUTAU AI pelo botão flutuante. A assistente consulta clientes, pedidos, orçamentos, rascunhos, catálogo, preços e indicadores. Os cartões de operações mostram o que será alterado e exigem confirmação. Use **Duplicar** no histórico para criar um rascunho a partir de um documento emitido. O sistema recupera suas combinações, consulta os preços vigentes e sinaliza itens indisponíveis.
 
-Para cadastrar pela interface tradicional, abra **Catálogo de iscas → Novo modelo**, informe nome, preços iniciais e as listas de gramaturas e cores. Clique em **Gerar prévia**, ajuste as combinações e confirme em **Salvar modelo**. Use **Editar** para adicionar opções ou alterar o estado e **Preços** para reajustar variantes. A interface usa gramaturas inteiras em gramas. As mudanças no catálogo entram em vigor a partir do salvamento e documentos já emitidos preservam seus dados.
+Para cadastrar pela interface tradicional, abra **Catálogo de iscas → Novo modelo**, informe nome, preços iniciais e as listas de gramaturas e cores. Clique em **Gerar prévia**, ajuste as combinações e confirme em **Salvar modelo**. Use **Editar** para adicionar opções ou alterar o estado e **Preços** para abrir o cartão comercial do modelo. A interface usa gramaturas inteiras em gramas. As mudanças no catálogo entram em vigor a partir do salvamento e documentos já emitidos preservam seus dados.
 
 Na assistente, você pode pedir “Cadastre um novo modelo chamado Isca Exemplo, com gramaturas de 10g e 20g, cores 01 até 03, preço de lojista R$ 19,00 e consumidor final R$ 30,00.” Revise as seis combinações e confirme. A [matriz de capacidades e documentação de ferramentas](docs/assistente.md) inclui exemplos de consultas, permissões, limites, confirmação e auditoria.
 
-As migrações Flyway V10 e V11 são aplicadas no próximo início. As variáveis existentes continuam válidas no Railway.
+A migração V12 adiciona os padrões comerciais em `catalog_product`. A auditoria existente registra os valores e a origem de alterações pelo painel e pela assistente.
 
 ## Gerador manual
 
@@ -219,7 +223,7 @@ O provedor de IA interpreta mensagens livres e ajuda a esclarecer trechos ambíg
    GEMINI_MODEL=gemini-3.5-flash-lite
    ```
 
-3. Pare a execução anterior. Na mesma pasta `urutau-jigs`, recarregue o `.env` com o trecho de PowerShell da seção de instalação e execute `java -jar ..\urutau-jigs-0.3.0.jar`. A mesma pasta de trabalho mantém o acesso a `data/urutau.mv.db` quando o H2 padrão estiver em uso. Em **Comercial**, abra **Novo orçamento com IA** e interprete um pedido de teste como `3 Spinner 12g cor 03`.
+3. Pare a execução anterior. Na mesma pasta `urutau-jigs`, recarregue o `.env` com o trecho de PowerShell da seção de instalação e execute `java -jar ..\urutau-jigs-0.3.1.jar`. A mesma pasta de trabalho mantém o acesso a `data/urutau.mv.db` quando o H2 padrão estiver em uso. Em **Comercial**, abra **Novo orçamento com IA** e interprete um pedido de teste como `3 Spinner 12g cor 03`.
 
 O modelo padrão, inclusive com `GEMINI_MODEL` em branco, é o Gemini 3.5 Flash-Lite estável. O back-end usa a operação oficial `generateContent` com Structured Outputs. Os limites de uso dependem do projeto no Google. Se a cota acabar ou o serviço falhar, a interface informa o erro e o gerador manual continua disponível. [Modelo e modalidade gratuita](https://aistudio.google.com/docs/models/gemini-3.5-flash-lite#pricing) · [Limites de uso](https://aistudio.google.com/docs/rate-limits)
 
@@ -257,17 +261,19 @@ Os testes de navegador executam o JAR gerado por `mvn clean verify` com um H2 de
 ```powershell
 python -m pip install -r src/test/browser/requirements.txt
 python -m playwright install chromium
-python src/test/browser/test_bulk_colors.py target/urutau-jigs-0.3.0.jar
-python src/test/browser/test_whatsapp_share.py target/urutau-jigs-0.3.0.jar
-python src/test/browser/test_pwa.py target/urutau-jigs-0.3.0.jar
-python src/test/browser/test_mobile_layout.py target/urutau-jigs-0.3.0.jar --output target/auditoria-mobile
-python src/test/browser/test_quote_confirmation.py target/urutau-jigs-0.3.0.jar
-python src/test/browser/test_quote_drafts.py target/urutau-jigs-0.3.0.jar
-python src/test/browser/test_orders.py target/urutau-jigs-0.3.0.jar
-python src/test/browser/test_customers.py target/urutau-jigs-0.3.0.jar
-python src/test/browser/test_workspaces.py target/urutau-jigs-0.3.0.jar
-python src/test/browser/test_assistant_admin.py target/urutau-jigs-0.3.0.jar
-python src/test/browser/test_production.py target/urutau-jigs-0.3.0.jar
+python src/test/browser/test_bulk_colors.py target/urutau-jigs-0.3.1.jar
+python src/test/browser/test_whatsapp_share.py target/urutau-jigs-0.3.1.jar
+python src/test/browser/test_pwa.py target/urutau-jigs-0.3.1.jar
+python src/test/browser/test_mobile_layout.py target/urutau-jigs-0.3.1.jar --output target/auditoria-mobile
+python src/test/browser/test_quote_confirmation.py target/urutau-jigs-0.3.1.jar
+python src/test/browser/test_quote_drafts.py target/urutau-jigs-0.3.1.jar
+python src/test/browser/test_orders.py target/urutau-jigs-0.3.1.jar
+python src/test/browser/test_customers.py target/urutau-jigs-0.3.1.jar
+python src/test/browser/test_workspaces.py target/urutau-jigs-0.3.1.jar
+python src/test/browser/test_assistant_admin.py target/urutau-jigs-0.3.1.jar
+python src/test/browser/test_production.py target/urutau-jigs-0.3.1.jar
+python src/test/browser/test_weight_prices.py target/urutau-jigs-0.3.1.jar
+python src/test/browser/test_weight_prices.py target/urutau-jigs-0.3.1.jar --engine webkit
 ```
 
 Se já tiver Chrome ou Edge instalado, use `--channel chrome` ou `--channel msedge` nos comandos de teste e dispense a instalação do Chromium pelo Playwright.
