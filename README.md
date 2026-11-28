@@ -23,12 +23,12 @@ O JAR distribuído requer Java 21. Para compilar o código-fonte, instale també
            [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2], 'Process')
        }
    }
-   java -jar ..\urutau-jigs-0.2.4.jar
+   java -jar ..\urutau-jigs-0.2.5.jar
    ```
 
 3. Abra [o painel local](http://127.0.0.1:8080/) e entre com uma das contas. Confira os valores em **Tabela de preços**. Os preços iniciais do catálogo oficial são cadastrados pelo Flyway. O H2 guarda os registros em `data/` da pasta onde a aplicação foi iniciada.
 
-Use `mvn spring-boot:run` para executar pelo código-fonte. Use `mvn clean verify` para executar os testes e gerar o JAR em `target/urutau-jigs-0.2.4.jar`. Em Linux, exporte as mesmas variáveis no ambiente do processo e execute o JAR com Java 21.
+Use `mvn spring-boot:run` para executar pelo código-fonte. Use `mvn clean verify` para executar os testes e gerar o JAR em `target/urutau-jigs-0.2.5.jar`. Em Linux, exporte as mesmas variáveis no ambiente do processo e execute o JAR com Java 21.
 
 ## Instalar o URUTAU JIGS como aplicativo
 
@@ -129,7 +129,17 @@ Os rascunhos mostram a origem Manual ou Com IA. Ao trocar de gerador, a aplicaç
 
 O formulário de orçamento solicita nome e, opcionalmente, telefone. Cidade e UF foram retiradas das telas, das buscas e dos novos PDFs. As colunas e os dados históricos permanecem no banco para preservar os documentos anteriores.
 
-Abra a **URUTAU AI** pelo botão flutuante para consultar totais por estado comercial, modelos, gramaturas, preços vigentes e o mínimo de lojista, além de receber orientações da página atual. Essas respostas usam consultas de leitura ao Java. O Gemini continua disponível para interpretar pedidos em linguagem livre no gerador com IA. A conversa da assistente fica na sessão autenticada, pode ser retomada após minimizar e tem uma ação de reinício. Consultas a clientes específicos e alterações de registros exigem a página correspondente.
+A conversa da **URUTAU AI** flutuante continua na sessão após minimizar ou navegar. A opção **Nova conversa** encerra o contexto e as propostas em aberto. O gerador com IA mantém a própria interpretação de pedidos.
+
+## Assistente administrativa e catálogo
+
+Abra a URUTAU AI pelo botão flutuante. A assistente consulta clientes, pedidos, orçamentos, rascunhos, catálogo, preços e indicadores. Os cartões de operações mostram o que será alterado e exigem confirmação. Use **Duplicar** no histórico para criar um rascunho a partir de um documento emitido. O sistema recupera suas combinações, consulta os preços vigentes e sinaliza itens indisponíveis.
+
+Para cadastrar pela interface tradicional, abra **Catálogo de iscas → Novo modelo**, informe nome, preços iniciais e as listas de gramaturas e cores. Clique em **Gerar prévia**, ajuste as combinações e confirme em **Salvar modelo**. Use **Editar** para adicionar opções ou alterar o estado e **Preços** para reajustar variantes. A interface usa gramaturas inteiras em gramas. As mudanças no catálogo entram em vigor a partir do salvamento e documentos já emitidos preservam seus dados.
+
+Na assistente, você pode pedir “Cadastre um novo modelo chamado Isca Exemplo, com gramaturas de 10g e 20g, cores 01 até 03, preço de lojista R$ 19,00 e consumidor final R$ 30,00.” Revise as seis combinações e confirme. A [matriz de capacidades e documentação de ferramentas](docs/assistente.md) inclui exemplos de consultas, permissões, limites, confirmação e auditoria.
+
+As migrações Flyway V10 e V11 são aplicadas no próximo início. As variáveis existentes continuam válidas no Railway.
 
 ## Gerador manual
 
@@ -201,7 +211,7 @@ O provedor de IA interpreta mensagens livres e ajuda a esclarecer trechos ambíg
    GEMINI_MODEL=gemini-3.5-flash-lite
    ```
 
-3. Pare a execução anterior. Na mesma pasta `urutau-jigs`, recarregue o `.env` com o trecho de PowerShell da seção de instalação e execute `java -jar ..\urutau-jigs-0.2.4.jar`. A mesma pasta de trabalho mantém o acesso a `data/urutau.mv.db` quando o H2 padrão estiver em uso. Em **Comercial**, abra **Novo orçamento com IA** e interprete um pedido de teste como `3 Spinner 12g cor 03`.
+3. Pare a execução anterior. Na mesma pasta `urutau-jigs`, recarregue o `.env` com o trecho de PowerShell da seção de instalação e execute `java -jar ..\urutau-jigs-0.2.5.jar`. A mesma pasta de trabalho mantém o acesso a `data/urutau.mv.db` quando o H2 padrão estiver em uso. Em **Comercial**, abra **Novo orçamento com IA** e interprete um pedido de teste como `3 Spinner 12g cor 03`.
 
 O modelo padrão, inclusive com `GEMINI_MODEL` em branco, é o Gemini 3.5 Flash-Lite estável. O back-end usa a operação oficial `generateContent` com Structured Outputs. Os limites de uso dependem do projeto no Google. Se a cota acabar ou o serviço falhar, a interface informa o erro e o gerador manual continua disponível. [Modelo e modalidade gratuita](https://aistudio.google.com/docs/models/gemini-3.5-flash-lite#pricing) · [Limites de uso](https://aistudio.google.com/docs/rate-limits)
 
@@ -211,7 +221,7 @@ Para escolher a OpenAI, configure explicitamente `AI_PROVIDER=openai` e `OPENAI_
 
 ### Uso e privacidade
 
-Cole somente a parte da mensagem que descreve os itens. Informe nome, telefone, cidade e UF diretamente no formulário administrativo após a revisão. Antes de montar a requisição, o back-end descarta padrões de contato e filtra o texto e o histórico para aproveitar termos do pedido, como modelos do catálogo, quantidades, gramaturas e cores. O Google pode usar e revisar conteúdo da modalidade gratuita para melhorar seus produtos, portanto reserve a URUTAU AI para pedidos sem informação pessoal, sensível ou confidencial. [Termos do Gemini](https://aistudio.google.com/docs/terms#data-use-unpaid)
+Cole somente a parte da mensagem que descreve os itens. Informe nome e telefone diretamente nos campos do cliente. Antes de montar a requisição, o back-end descarta padrões de contato e filtra o texto e o histórico para aproveitar termos do pedido, como modelos do catálogo, quantidades, gramaturas e cores. O Google pode usar e revisar conteúdo da modalidade gratuita para melhorar seus produtos, portanto reserve a URUTAU AI para pedidos sem informação pessoal, sensível ou confidencial. [Termos do Gemini](https://aistudio.google.com/docs/terms#data-use-unpaid)
 
 A conversa é vinculada à sessão administrativa, e **Nova conversa** cria outro contexto. O rascunho e as perguntas relevantes acompanham as mensagens seguintes até o encerramento ou expiração da sessão. Reiniciar o aplicativo inicia uma nova sessão.
 
@@ -239,15 +249,16 @@ Os testes de navegador executam o JAR gerado por `mvn clean verify` com um H2 de
 ```powershell
 python -m pip install -r src/test/browser/requirements.txt
 python -m playwright install chromium
-python src/test/browser/test_bulk_colors.py target/urutau-jigs-0.2.4.jar
-python src/test/browser/test_whatsapp_share.py target/urutau-jigs-0.2.4.jar
-python src/test/browser/test_pwa.py target/urutau-jigs-0.2.4.jar
-python src/test/browser/test_mobile_layout.py target/urutau-jigs-0.2.4.jar --output target/auditoria-mobile
-python src/test/browser/test_quote_confirmation.py target/urutau-jigs-0.2.4.jar
-python src/test/browser/test_quote_drafts.py target/urutau-jigs-0.2.4.jar
-python src/test/browser/test_orders.py target/urutau-jigs-0.2.4.jar
-python src/test/browser/test_customers.py target/urutau-jigs-0.2.4.jar
-python src/test/browser/test_workspaces.py target/urutau-jigs-0.2.4.jar
+python src/test/browser/test_bulk_colors.py target/urutau-jigs-0.2.5.jar
+python src/test/browser/test_whatsapp_share.py target/urutau-jigs-0.2.5.jar
+python src/test/browser/test_pwa.py target/urutau-jigs-0.2.5.jar
+python src/test/browser/test_mobile_layout.py target/urutau-jigs-0.2.5.jar --output target/auditoria-mobile
+python src/test/browser/test_quote_confirmation.py target/urutau-jigs-0.2.5.jar
+python src/test/browser/test_quote_drafts.py target/urutau-jigs-0.2.5.jar
+python src/test/browser/test_orders.py target/urutau-jigs-0.2.5.jar
+python src/test/browser/test_customers.py target/urutau-jigs-0.2.5.jar
+python src/test/browser/test_workspaces.py target/urutau-jigs-0.2.5.jar
+python src/test/browser/test_assistant_admin.py target/urutau-jigs-0.2.5.jar
 ```
 
 Se já tiver Chrome ou Edge instalado, use `--channel chrome` ou `--channel msedge` nos comandos de teste e dispense a instalação do Chromium pelo Playwright.

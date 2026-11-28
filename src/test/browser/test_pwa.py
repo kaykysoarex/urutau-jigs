@@ -19,8 +19,8 @@ from test_quote_confirmation import assert_clean_form
 
 
 WORKER = "/service-worker.js"
-CACHE = "urutau-jigs-pwa-0.2.4"
-NEXT_CACHE = "urutau-jigs-pwa-0.2.4-browser-next"
+CACHE = "urutau-jigs-pwa-0.2.5"
+NEXT_CACHE = "urutau-jigs-pwa-0.2.5-browser-next"
 UNRELATED_CACHE = "qa-cache-fora-da-pwa"
 PNG_ICONS = {
     "/icons/icon-192.png": 192,
@@ -238,10 +238,11 @@ def check_connectivity_and_auth(page, context, server, variant, quote_number):
     expect(page.locator("#pwa-offline")).not_to_be_visible()
     expect(page.locator("#summary-quantity")).to_have_text("2 unidades")
 
+    expect(page.locator("#draft-save-status")).to_have_text("Rascunho salvo automaticamente")
+    expect(page.locator("#pwa-offline")).not_to_be_visible()
+    page.locator("#nav-toggle").tap()
     server.unavailable = True
     try:
-        expect(page.locator("#pwa-offline")).not_to_be_visible()
-        page.locator("#nav-toggle").tap()
         page.locator('a[data-page="history"]').tap()
         expect(page.locator("#pwa-offline")).to_be_visible()
         offline = page.goto("/")
