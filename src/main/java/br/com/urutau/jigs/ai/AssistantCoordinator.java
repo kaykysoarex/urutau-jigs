@@ -106,7 +106,7 @@ class AssistantCoordinator {
         }
         try {
             var result = perform(actor, tool, message, text, activeDraft, context);
-            if (context.incompleteCatalog != null && (tool == PRODUCT_CREATE || tool == PRODUCT_UPDATE)) {
+            if (context.incompleteCatalog != null && (tool == PRODUCT_CREATE || tool == PRODUCT_UPDATE || tool == PRICE_UPDATE)) {
                 context.incompleteCatalog = null;
                 context.awaiting = null;
             }
@@ -114,6 +114,11 @@ class AssistantCoordinator {
         } catch (ResponseStatusException problem) {
             if ((tool == PRODUCT_CREATE || tool == PRODUCT_UPDATE) && message.length() <= 1800
                     && problem.getReason() != null && has(problem.getReason(), "Informe nome, gramaturas", "Informe as gramaturas e as cores")) {
+                context.incompleteCatalog = message;
+                context.awaiting = tool;
+            }
+            if (tool == PRICE_UPDATE && message.length() <= 1800 && problem.getReason() != null
+                    && has(problem.getReason(), "Informe uma tabela", "Informe o valor do preço", "Informe o modelo cadastrado")) {
                 context.incompleteCatalog = message;
                 context.awaiting = tool;
             }
@@ -215,6 +220,9 @@ class AssistantCoordinator {
                     has(text, "todas as cores atuais", "cores atuais", "todas as cores cadastradas"), initialPrices);
             }
             case PRICE_UPDATE -> {
+                if (!colors(raw).isEmpty() || has(text, "por cor", "cada cor", "apenas a cor")) {
+                    throw invalid("A alteração de preços vale para todas as cores da gramatura. Informe o modelo e a gramatura.");
+                }
                 boolean wholesale = has(text, "lojista");
                 boolean retail = has(text, "consumidor final", "varejo");
                 if (wholesale == retail) throw invalid("Informe uma tabela por proposta: lojista ou consumidor final.");
@@ -222,7 +230,8 @@ class AssistantCoordinator {
                 if (price == null) price = amount(raw, wholesale ? "lojista" : "consumidor\\s+final|varejo");
                 boolean reduce = has(text, "reduza", "reduzir");
                 if (price != null && reduce) price = price.negate();
-                yield catalog.price(actor, raw, wholesale, price, reduce || has(text, "aumente", "aumentar"), weights(raw), colors(raw));
+                yield catalog.price(actor, raw, wholesale, price, reduce || has(text, "aumente", "aumentar"), weights(raw),
+                    price == null && has(text, "preco padrao", "valor padrao"));
             }
             case SETTINGS_UPDATE -> {
                 String units = match(raw, "(?<![\\d.,+\\-])([0-9]{1,9})\\s*(?:iscas?|unidades?)?\\s*[.!]?$");

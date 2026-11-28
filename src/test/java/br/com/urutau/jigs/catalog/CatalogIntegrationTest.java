@@ -78,6 +78,81 @@ class CatalogIntegrationTest {
         assertThat(catalog.findVariants(List.of(originalId)).get(originalId).active()).isTrue();
     }
 
+    @Autowired
+    private org.springframework.jdbc.core.simple.JdbcClient jdbc;
+
+    @Test
+    void groupsAllColorsAndUsesEffectivePricesForQuotesAndNewVariants() {
+        var model = catalog.create(new ProductUpdate("Modelo de preços por gramatura", true,
+            List.of(color(10, "01"), color(10, "02"), color(14, "01")), initial("27", "17")));
+        assertThat(model.weightPrices()).extracting(CatalogDtos.WeightPrices::combinations).containsExactly(2, 1);
+        var other = get(catalog.create(new ProductUpdate("Outro modelo de preços por gramatura", true,
+            List.of(color(10, "01")), initial("27", "17"))).id());
+
+        var legacyVariant = model.variants().get(1);
+        jdbc.sql("update catalog_variant set wholesale_price = null where id = :id").param("id", legacyVariant.id()).update();
+        model = get(model.id());
+        var conflict = model.weightPrices().getFirst();
+        assertThat(conflict.wholesaleValues()).containsExactly(null, new BigDecimal("17.00"));
+        assertThat(conflict.retailPrice()).isEqualByComparingTo("27.00");
+        var groupIds = model.variants().stream().filter(row -> row.weight() == 10).map(VariantView::id).toList();
+        assertThat(catalog.findVariants(groupIds).values()).allSatisfy(row -> {
+            assertThat(row.wholesalePrice()).isNull();
+            assertThat(row.retailPrice()).isEqualByComparingTo("27");
+        });
+
+        long id = model.id();
+        var rows = List.of(color(10, "01"), color(10, "02"), color(10, "03"), color(14, "01"), color(18, "01"));
+        assertThatThrownBy(() -> catalog.update(id, new ProductUpdate("Modelo de preços por gramatura", true, rows)))
+            .hasMessageContaining("preços divergentes");
+        var single = new CatalogDtos.WeightPriceUpdate(10, new CatalogDtos.PriceChange(false, null, true, new BigDecimal("18")));
+        var saved = new CatalogDtos.ModelPriceUpdate(id, model.version(), null, List.of(single));
+        catalog.updateWeightPrices(new CatalogDtos.WeightPricesUpdate(List.of(saved)), "admin-teste");
+        assertThatThrownBy(() -> catalog.updateWeightPrices(new CatalogDtos.WeightPricesUpdate(List.of(saved)), "admin-teste"))
+            .hasMessageContaining("mudou");
+
+        model = catalog.update(id, new ProductUpdate(model.name(), true, rows));
+        assertThat(model.variants()).filteredOn(row -> row.weight() == 10)
+            .allSatisfy(row -> assertThat(row.wholesalePrice()).isEqualByComparingTo("18"));
+        assertThat(model.weightPrices().getLast().wholesalePrice()).isEqualByComparingTo("17");
+        var withNewWeight = new java.util.ArrayList<>(rows);
+        withNewWeight.add(color(20, "02"));
+        model = catalog.update(id, new ProductUpdate(model.name(), true, withNewWeight, initial("31", "21")));
+        assertThat(model.weightPrices().getLast().wholesalePrice()).isEqualByComparingTo("21");
+
+        var newDefault = new CatalogDtos.PriceChange(true, new BigDecimal("29"), true, new BigDecimal("19"));
+        var all = model.weightPrices().stream().map(row -> new CatalogDtos.WeightPriceUpdate(row.weight(), newDefault)).toList();
+        var bulk = new CatalogDtos.ModelPriceUpdate(id, model.version(), newDefault, all);
+        var bad = new CatalogDtos.ModelPriceUpdate(other.id(), other.version(), null,
+            List.of(new CatalogDtos.WeightPriceUpdate(99, newDefault)));
+        assertThatThrownBy(() -> catalog.updateWeightPrices(new CatalogDtos.WeightPricesUpdate(List.of(bulk, bad)), "admin-teste"))
+            .hasMessageContaining("mudou");
+        assertThat(get(id).defaultWholesalePrice()).isEqualByComparingTo("17");
+        assertThat(get(id).weightPrices().getFirst().wholesalePrice()).isEqualByComparingTo("18");
+        catalog.updateWeightPrices(new CatalogDtos.WeightPricesUpdate(List.of(bulk)), "admin-teste");
+        model = get(id);
+        assertThat(model.defaultWholesalePrice()).isEqualByComparingTo("19");
+        assertThat(model.variants()).allSatisfy(row -> {
+            assertThat(row.retailPrice()).isEqualByComparingTo("29");
+            assertThat(row.wholesalePrice()).isEqualByComparingTo("19");
+        });
+        assertThat(get(other.id())).isEqualTo(other);
+        assertThat(jdbc.sql("select count(*) from assistant_audit where tool = 'PRICE_UPDATE' and actor = 'admin-teste'")
+            .query(Long.class).single()).isEqualTo(2);
+    }
+
+    private ProductView get(long id) {
+        return catalog.list().stream().filter(row -> row.id() == id).findFirst().orElseThrow();
+    }
+
+    private static CatalogDtos.InitialPrices initial(String retail, String wholesale) {
+        return new CatalogDtos.InitialPrices(new BigDecimal(retail), new BigDecimal(wholesale));
+    }
+
+    private static VariantUpdate color(int grams, String code) {
+        return new VariantUpdate(grams, code, true);
+    }
+
     @Test
     void refusesInvalidPriceBatchAndSavesTheWholesaleThreshold() {
         var product = catalog.create(new ProductUpdate("Modelo de teste para preços", true,

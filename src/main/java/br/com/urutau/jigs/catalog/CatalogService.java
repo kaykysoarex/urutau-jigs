@@ -1,7 +1,10 @@
 package br.com.urutau.jigs.catalog;
 
 import br.com.urutau.jigs.config.OperationAudit;
+import java.math.BigDecimal;
 import java.time.Clock;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 import java.util.Collection;
 import java.util.Comparator;
@@ -18,7 +21,11 @@ import br.com.urutau.jigs.catalog.CatalogDtos.ProductUpdate;
 import br.com.urutau.jigs.catalog.CatalogDtos.ProductView;
 import br.com.urutau.jigs.catalog.CatalogDtos.Settings;
 import br.com.urutau.jigs.catalog.CatalogDtos.VariantForQuote;
-import br.com.urutau.jigs.catalog.CatalogDtos.VariantPriceUpdate;
+import br.com.urutau.jigs.catalog.CatalogDtos.InitialPrices;
+import br.com.urutau.jigs.catalog.CatalogDtos.PriceChange;
+import br.com.urutau.jigs.catalog.CatalogDtos.WeightPriceUpdate;
+import br.com.urutau.jigs.catalog.CatalogDtos.WeightPrices;
+import br.com.urutau.jigs.catalog.CatalogDtos.WeightPricesUpdate;
 import br.com.urutau.jigs.catalog.CatalogDtos.VariantUpdate;
 import br.com.urutau.jigs.catalog.CatalogDtos.VariantView;
 import org.springframework.http.HttpStatus;
@@ -52,8 +59,15 @@ public class CatalogService {
         if (ids.isEmpty()) {
             return Map.of();
         }
+        Map<Long, Map<Integer, WeightPrices>> prices = new LinkedHashMap<>();
         return variants.findWithProducts(ids).stream()
-            .map(CatalogService::variantForQuote)
+            .map(variant -> {
+                var product = variant.product();
+                var weights = prices.computeIfAbsent(product.id(), ignored -> weightIndex(product));
+                var price = weights.get(variant.weight());
+                return new VariantForQuote(variant.id(), product.id(), product.name(), variant.weight(), variant.color(),
+                    product.active() && variant.active(), price.retailPrice(), price.wholesalePrice());
+            })
             .collect(Collectors.toUnmodifiableMap(VariantForQuote::id, Function.identity()));
     }
 
@@ -71,10 +85,11 @@ public class CatalogService {
         requireUniqueName(request.name(), null);
         var product = new CatalogProduct(request.name(), request.active());
         product.createdAt = product.updatedAt = clock.instant().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
-        applyVariants(product, request.variants());
         if (request.prices() != null) {
-            product.variants().forEach(variant -> variant.setPrices(request.prices().retailPrice(), request.prices().wholesalePrice()));
+            product.defaultRetailPrice = request.prices().retailPrice();
+            product.defaultWholesalePrice = request.prices().wholesalePrice();
         }
+        applyVariants(product, request.variants(), Map.of(), null);
         var created = productView(products.saveAndFlush(product));
         audit(admin, "PRODUCT_CREATE", Long.toString(created.id()), "", created.toString());
         return created;
@@ -92,16 +107,10 @@ public class CatalogService {
         var previous = productView(product);
         if (expected != null && !expected.equals(previous) || request.expectedVersion() != null
                 && request.expectedVersion() != previous.version()) throw changed();
-        var previousKeys = product.variants().stream().map(v -> new VariantKey(v.weight(), v.color()))
-            .collect(Collectors.toSet());
         requireUniqueName(request.name(), id);
         product.update(request.name(), request.active());
-        product.updatedAt = clock.instant().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
-        applyVariants(product, request.variants());
-        if (request.prices() != null) {
-            product.variants().stream().filter(v -> !previousKeys.contains(new VariantKey(v.weight(), v.color())))
-                .forEach(v -> v.setPrices(request.prices().retailPrice(), request.prices().wholesalePrice()));
-        }
+        touch(product);
+        applyVariants(product, request.variants(), weightIndex(product), request.prices());
         products.flush();
         var changed = productView(product);
         audit(admin, "PRODUCT_UPDATE", Long.toString(id), previous.toString(), changed.toString());
@@ -110,47 +119,109 @@ public class CatalogService {
 
     @Transactional
     public void updatePrices(PricesUpdate request) {
-        updatePrices(request, null, null);
+        updatePrices(request, null);
     }
 
     @Transactional
-    public void updatePrices(PricesUpdate request, Map<Long, VariantPriceUpdate> expected, String admin) {
-        updatePrices(request, expected, List.of(), admin);
-    }
-
-    @Transactional
-    public void updatePrices(PricesUpdate request, Map<Long, VariantPriceUpdate> expected,
-                             List<ProductView> expectedModels, String admin) {
-        Map<Long, VariantPriceUpdate> updates = new LinkedHashMap<>();
+    public void updatePrices(PricesUpdate request, String admin) {
+        var ids = request.variants().stream().map(CatalogDtos.VariantPriceUpdate::id).toList();
+        if (ids.isEmpty()) return;
+        if (ids.size() != new java.util.HashSet<>(ids).size()) {
+            throw badRequest("Há mais de um preço para a mesma combinação.");
+        }
+        var affected = lockProducts(variants.affectedModels(ids));
+        var rows = variants.lockForModels(affected.keySet());
+        var indexed = rows.stream().collect(Collectors.toMap(CatalogVariant::id, Function.identity()));
+        Map<Long, Map<Integer, PriceChange>> changes = new LinkedHashMap<>();
         for (var update : request.variants()) {
-            if (updates.putIfAbsent(update.id(), update) != null) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Há mais de um preço para a mesma combinação.");
+            var row = indexed.get(update.id());
+            if (row == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Uma das combinações de isca não foi encontrada.");
+            var price = new PriceChange(true, normalized(update.retailPrice()), true, normalized(update.wholesalePrice()));
+            var previous = changes.computeIfAbsent(row.product().id(), ignored -> new LinkedHashMap<>())
+                .putIfAbsent(row.weight(), price);
+            if (previous != null && !previous.equals(price)) throw badRequest("Envie um único par de preços por gramatura.");
+        }
+        affected.forEach((id, product) -> writePrices(product, rowsFor(rows, id), changes.get(id), null, admin));
+    }
+
+    @Transactional
+    public void updateWeightPrices(WeightPricesUpdate request, String admin) {
+        var ids = request.models().stream().map(CatalogDtos.ModelPriceUpdate::id).toList();
+        var affected = lockProducts(ids);
+        var rows = variants.lockForModels(affected.keySet());
+        for (var update : request.models()) {
+            var product = affected.get(update.id());
+            if (product.version() != update.version()) throw changed();
+            Map<Integer, PriceChange> changes = new LinkedHashMap<>();
+            for (WeightPriceUpdate row : update.weights()) {
+                if (changes.putIfAbsent(row.weight(), row.prices()) != null) throw badRequest("Há gramaturas repetidas.");
             }
+            writePrices(product, rowsFor(rows, update.id()), changes, update.defaults(), admin);
         }
-        if (updates.isEmpty()) {
-            return;
+    }
+
+    private Map<Long, CatalogProduct> lockProducts(Collection<Long> ids) {
+        Map<Long, CatalogProduct> locked = new LinkedHashMap<>();
+        for (long id : ids.stream().distinct().sorted().toList()) {
+            locked.put(id, products.findForUpdate(id).orElseThrow(CatalogService::changed));
         }
-        var affected = variants.affectedModels(updates.keySet()).stream().sorted().map(id ->
-            products.findForUpdate(id).orElseThrow(CatalogService::changed)).toList();
-        if (!expectedModels.isEmpty() && affected.stream().anyMatch(product -> !expectedModels.contains(productView(product)))) {
-            throw changed();
+        if (locked.size() != ids.size()) throw badRequest("Há modelos repetidos.");
+        return locked;
+    }
+
+    private static List<CatalogVariant> rowsFor(List<CatalogVariant> rows, long productId) {
+        return rows.stream().filter(row -> row.product().id() == productId).toList();
+    }
+
+    private void writePrices(CatalogProduct product, List<CatalogVariant> rows, Map<Integer, PriceChange> changes,
+                             PriceChange defaults, String admin) {
+        var registered = rows.stream().map(CatalogVariant::weight).collect(Collectors.toSet());
+        if (!registered.containsAll(changes.keySet())) throw changed();
+        if (defaults != null && (!registered.equals(changes.keySet()) || changes.values().stream().anyMatch(price ->
+                defaults.setRetail() && (!price.setRetail() || !sameAmount(defaults.retailPrice(), price.retailPrice()))
+                || defaults.setWholesale() && (!price.setWholesale() || !sameAmount(defaults.wholesalePrice(), price.wholesalePrice()))))) {
+            throw badRequest("Aplique o preço padrão a todas as gramaturas do modelo.");
         }
-        var matches = variants.lockVariants(updates.keySet());
-        if (matches.size() != updates.size()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Uma das combinações de isca não foi encontrada.");
+        if (changes.values().stream().anyMatch(price -> !price.setRetail() && !price.setWholesale())) {
+            throw badRequest("Informe pelo menos uma tabela comercial para cada gramatura.");
         }
-        Map<Long, VariantPriceUpdate> previous = new LinkedHashMap<>();
-        for (var variant : matches) {
-            previous.put(variant.id(), new VariantPriceUpdate(variant.id(), variant.retailPrice(), variant.wholesalePrice()));
+        var impacted = rows.stream().filter(row -> changes.containsKey(row.weight())).toList();
+        var before = priceSnapshot(product, impacted);
+        if (defaults != null) {
+            if (defaults.setRetail()) product.defaultRetailPrice = defaults.retailPrice();
+            if (defaults.setWholesale()) product.defaultWholesalePrice = defaults.wholesalePrice();
         }
-        if (expected != null && !previous.equals(expected)) throw changed();
-        var updatedAt = clock.instant().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
-        affected.forEach(product -> product.updatedAt = updatedAt);
-        for (var variant : matches) {
-            var update = updates.get(variant.id());
-            variant.setPrices(update.retailPrice(), update.wholesalePrice());
+        for (var variant : impacted) {
+            var change = changes.get(variant.weight());
+            variant.setPrices(change.setRetail() ? change.retailPrice() : variant.retailPrice(),
+                change.setWholesale() ? change.wholesalePrice() : variant.wholesalePrice());
         }
-        audit(admin, "PRICE_UPDATE", updates.size() + " combinações", previous.toString(), updates.toString());
+        touch(product);
+        audit(admin, "PRICE_UPDATE", product.id() + " · " + impacted.size() + " combinações",
+            before, priceSnapshot(product, impacted));
+    }
+
+    private static String priceSnapshot(CatalogProduct product, List<CatalogVariant> rows) {
+        return product.name() + " · padrões " + product.defaultRetailPrice + " / " + product.defaultWholesalePrice
+            + " · " + CatalogPricing.group(rows.stream().map(CatalogService::variantView).toList());
+    }
+
+    private void touch(CatalogProduct product) {
+        Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
+        product.updatedAt = product.updatedAt != null && !now.isAfter(product.updatedAt)
+            ? product.updatedAt.plus(1, ChronoUnit.MICROS) : now;
+    }
+
+    private static boolean sameAmount(BigDecimal left, BigDecimal right) {
+        return Objects.equals(normalized(left), normalized(right));
+    }
+
+    private static BigDecimal normalized(BigDecimal value) {
+        return value == null ? null : value.stripTrailingZeros();
+    }
+
+    private static ResponseStatusException badRequest(String message) {
+        return new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
     }
 
     @Transactional
@@ -185,7 +256,8 @@ public class CatalogService {
         }
     }
 
-    private static void applyVariants(CatalogProduct product, List<VariantUpdate> updates) {
+    private static void applyVariants(CatalogProduct product, List<VariantUpdate> updates,
+                                      Map<Integer, WeightPrices> previousWeights, InitialPrices newWeightPrices) {
         Map<VariantKey, Boolean> desired = new LinkedHashMap<>();
         var existing = product.variants().stream().map(variant -> new VariantKey(variant.weight(), variant.color()))
             .collect(Collectors.toSet());
@@ -208,22 +280,37 @@ public class CatalogService {
             Boolean active = desired.remove(new VariantKey(variant.weight(), variant.color()));
             variant.setActive(Boolean.TRUE.equals(active));
         }
-        desired.forEach((key, active) -> product.addVariant(key.weight(), key.color(), active));
+        desired.forEach((key, active) -> {
+            var previous = previousWeights.get(key.weight());
+            if (previous != null && previous.divergent()) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Resolva os preços divergentes de " + key.weight()
+                    + " g na tabela de preços antes de adicionar cores a essa gramatura.");
+            }
+            var retail = previous != null ? previous.retailPrice()
+                : newWeightPrices != null ? newWeightPrices.retailPrice() : product.defaultRetailPrice;
+            var wholesale = previous != null ? previous.wholesalePrice()
+                : newWeightPrices != null ? newWeightPrices.wholesalePrice() : product.defaultWholesalePrice;
+            product.addVariant(key.weight(), key.color(), active).setPrices(retail, wholesale);
+        });
     }
 
     private static ProductView productView(CatalogProduct product) {
         var entries = product.variants().stream()
             .sorted(Comparator.comparingInt(CatalogVariant::weight).thenComparing(CatalogVariant::color))
-            .map(variant -> new VariantView(variant.id(), variant.weight(), variant.color(), variant.active(),
-                variant.retailPrice(), variant.wholesalePrice()))
+            .map(CatalogService::variantView)
             .toList();
-        return new ProductView(product.id(), product.name(), product.active(), entries, product.createdAt, product.updatedAt, product.version());
+        return new ProductView(product.id(), product.name(), product.active(), entries, product.createdAt, product.updatedAt,
+            product.version(), product.defaultRetailPrice, product.defaultWholesalePrice, CatalogPricing.group(entries));
     }
 
-    private static VariantForQuote variantForQuote(CatalogVariant variant) {
-        var product = variant.product();
-        return new VariantForQuote(variant.id(), product.id(), product.name(), variant.weight(), variant.color(),
-            product.active() && variant.active(), variant.retailPrice(), variant.wholesalePrice());
+    private static Map<Integer, WeightPrices> weightIndex(CatalogProduct product) {
+        return CatalogPricing.group(product.variants().stream().map(CatalogService::variantView).toList())
+            .stream().collect(Collectors.toMap(WeightPrices::weight, Function.identity()));
+    }
+
+    private static VariantView variantView(CatalogVariant variant) {
+        return new VariantView(variant.id(), variant.weight(), variant.color(), variant.active(),
+            variant.retailPrice(), variant.wholesalePrice());
     }
 
     private record VariantKey(int weight, String color) {}

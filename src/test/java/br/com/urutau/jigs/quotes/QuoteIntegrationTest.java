@@ -63,7 +63,7 @@ class QuoteIntegrationTest {
         String suffix = UUID.randomUUID().toString().substring(0, 8);
         var model = catalog.create(new ProductUpdate("Modelo de teste " + suffix, true, List.of(
                 new VariantUpdate(10, "01", true), new VariantUpdate(12, "03", true),
-                new VariantUpdate(12, "04", true), new VariantUpdate(14, "06", false))));
+                new VariantUpdate(13, "04", true), new VariantUpdate(14, "06", false))));
         var other = catalog.create(new ProductUpdate("Outro modelo " + suffix, true,
                 List.of(new VariantUpdate(16, "08", true))));
         first = model.variants().get(0).id();

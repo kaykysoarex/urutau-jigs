@@ -52,15 +52,37 @@ public final class CatalogDtos {
         @Digits(integer = 10, fraction = 2) @DecimalMin("0.00") BigDecimal wholesalePrice
     ) {}
 
+    public record PriceChange(
+        boolean setRetail, @Digits(integer = 10, fraction = 2) @DecimalMin("0.00") BigDecimal retailPrice,
+        boolean setWholesale, @Digits(integer = 10, fraction = 2) @DecimalMin("0.00") BigDecimal wholesalePrice
+    ) {}
+
+    public record WeightPriceUpdate(@Positive int weight, @NotNull @Valid PriceChange prices) {}
+
+    public record ModelPriceUpdate(@Positive long id, @NotNull @jakarta.validation.constraints.PositiveOrZero Long version,
+                                   @Valid PriceChange defaults,
+                                   @NotNull @Size(min = 1, max = 2000) List<@NotNull @Valid WeightPriceUpdate> weights) {}
+
+    public record WeightPricesUpdate(
+        @NotNull @Size(min = 1, max = 100) List<@NotNull @Valid ModelPriceUpdate> models
+    ) {}
+
     public record Settings(
         @NotNull @Positive Integer wholesaleThreshold
     ) {}
 
     public record ProductView(long id, String name, boolean active, List<VariantView> variants,
-                              java.time.Instant createdAt, java.time.Instant updatedAt, long version) {
+                              java.time.Instant createdAt, java.time.Instant updatedAt, long version,
+                              BigDecimal defaultRetailPrice, BigDecimal defaultWholesalePrice, List<WeightPrices> weightPrices) {
         public ProductView(long id, String name, boolean active, List<VariantView> variants) {
-            this(id, name, active, variants, null, null, 0);
+            this(id, name, active, variants, null, null, 0, null, null, CatalogPricing.group(variants));
         }
+    }
+
+    public record WeightPrices(int weight, int combinations, List<BigDecimal> retailValues, List<BigDecimal> wholesaleValues) {
+        public boolean divergent() { return retailValues.size() > 1 || wholesaleValues.size() > 1; }
+        public BigDecimal retailPrice() { return retailValues.size() == 1 ? retailValues.getFirst() : null; }
+        public BigDecimal wholesalePrice() { return wholesaleValues.size() == 1 ? wholesaleValues.getFirst() : null; }
     }
 
     public record VariantView(

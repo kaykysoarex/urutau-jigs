@@ -7,6 +7,7 @@ import br.com.urutau.jigs.catalog.CatalogDtos.PricesUpdate;
 import br.com.urutau.jigs.catalog.CatalogDtos.ProductUpdate;
 import br.com.urutau.jigs.catalog.CatalogDtos.ProductView;
 import br.com.urutau.jigs.catalog.CatalogDtos.Settings;
+import br.com.urutau.jigs.catalog.CatalogDtos.WeightPricesUpdate;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -46,7 +47,13 @@ class CatalogController {
     @PutMapping("/catalog/prices")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void updatePrices(@Valid @RequestBody PricesUpdate request, Principal actor) {
-        catalog.updatePrices(request, null, actor.getName());
+        catalog.updatePrices(request, actor.getName());
+    }
+
+    @PutMapping("/catalog/prices/weights")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void updateWeightPrices(@Valid @RequestBody WeightPricesUpdate request, Principal actor) {
+        catalog.updateWeightPrices(request, actor.getName());
     }
 
     @GetMapping("/settings")

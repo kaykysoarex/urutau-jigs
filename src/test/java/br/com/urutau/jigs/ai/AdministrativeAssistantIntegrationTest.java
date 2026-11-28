@@ -93,7 +93,11 @@ class AdministrativeAssistantIntegrationTest {
         confirm(session, "Adicione a cor 10 em todas as gramaturas da Isca Seleção QA.");
         assertThat(jdbc.sql("select count(*) from catalog_variant where product_id = :p").param("p", id).query(Long.class).single())
             .isEqualTo(7L);
-        var pending = propose(session, "Altere o preço de lojista da Isca Seleção QA de 10g na cor 01 para R$ 18,00.");
+        var byColor = send(session, "Altere o preço de lojista da Isca Seleção QA de 10g na cor 01 para R$ 18,00.");
+        assertThat(byColor.toString()).contains("todas as cores da gramatura");
+        assertThat(byColor.path("proposal").isNull()).isTrue();
+        var pending = propose(session, "Altere o preço de lojista da Isca Seleção QA de 10g para R$ 18,00.");
+        assertThat(pending.path("card").toString()).contains("10 g", "4 combinações", "19,00", "18,00");
         long variant = jdbc.sql("select id from catalog_variant where product_id = :p and weight_grams = 10 and color_code = '01'")
             .param("p", id).query(Long.class).single();
         mvc.perform(put("/api/catalog/prices").with(user("other").roles("ADMIN")).with(csrf())
@@ -106,6 +110,31 @@ class AdministrativeAssistantIntegrationTest {
         assertThat(jdbc.sql("select wholesale_price from catalog_variant where id = :id").param("id", variant)
             .query(java.math.BigDecimal.class).single()).isEqualByComparingTo("22.00");
         mvc.perform(get("/api/assistant").with(user("visitor").roles("USER"))).andExpect(status().isForbidden());
+    }
+
+    @Test
+    void clarifiesPriceChangesAndProposesOnlyTheRequestedWeights() throws Exception {
+        var session = new MockHttpSession();
+        confirm(session, "Cadastre um novo modelo chamado Isca Preço QA, com gramaturas de 10g e 15g, "
+            + "cores 01 até 03, preço de lojista R$ 17,00 e consumidor final R$ 27,00.");
+        assertThat(send(session, "Qual é o preço de cada gramatura da Isca Preço QA?").toString())
+            .contains("10 g", "15 g", "27,00", "17,00").doesNotContain("cor 01");
+        assertThat(send(session, "Altere apenas o preço da Isca Preço QA de 10g.").toString()).contains("Informe uma tabela");
+        var single = propose(session, "Lojista, R$ 20,00.");
+        assertThat(single.path("card").toString()).contains("10 g", "3 combinações", "17,00", "20,00").doesNotContain("15 g");
+        assertThat(decide(session, single.path("id").asString(), true)).contains("3 combinações");
+
+        assertThat(send(session, "Aplique o mesmo preço a todas as gramaturas da Isca Preço QA.").toString()).contains("Informe uma tabela");
+        var uniform = propose(session, "Use o preço padrão de lojista.");
+        assertThat(uniform.path("card").toString()).contains("10 g", "15 g", "6 combinações", "20,00", "17,00");
+        assertThat(decide(session, uniform.path("id").asString(), false)).contains("cancelada");
+        confirm(session, "Altere o preço de lojista da Isca Preço QA para R$ 18,00 em todas as gramaturas.");
+        assertThat(jdbc.sql("""
+            select distinct v.wholesale_price from catalog_variant v join catalog_product p on p.id = v.product_id
+            where p.name = 'Isca Preço QA'
+            """).query(java.math.BigDecimal.class).single()).isEqualByComparingTo("18.00");
+        assertThat(jdbc.sql("select count(*) from assistant_audit where tool = 'PRICE_UPDATE' and actor = 'first' and result = 'SUCESSO'")
+            .query(Long.class).single()).isGreaterThanOrEqualTo(2);
     }
 
     @Test

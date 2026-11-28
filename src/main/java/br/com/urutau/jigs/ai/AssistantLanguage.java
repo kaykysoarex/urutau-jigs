@@ -34,7 +34,7 @@ final class AssistantLanguage {
         if (has(text, "variavel de ambiente", "chave de api", "senha do administrador", "railway", "execute sql")) return null;
         if (has(text, "minimum", "minimo", "quantidade minima")) return changes ? SETTINGS_UPDATE : SETTINGS;
         if (has(text, "configure o limite", "limite de lojista") && changes) return SETTINGS_UPDATE;
-        if (has(text, "preco", "tabela comercial") && changes) return PRICE_UPDATE;
+        if (has(text, "preco", "tabela comercial") && (changes || has(text, "aplique", "aplicar", "uniformize"))) return PRICE_UPDATE;
         if (has(text, "confirme", "confirmar") && has(text, "numero", "n ", " 00") && (quote || order)) return ORDER_CONFIRM;
         if (has(text, "confirme") && quote) return ORDER_CONFIRM;
         if (has(text, "marque", "registre", "registrar") && has(text, "entreg")) return ORDER_DELIVER;

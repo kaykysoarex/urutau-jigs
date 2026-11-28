@@ -42,10 +42,16 @@ class AssistantCatalog {
             var lines = new ArrayList<String>();
             lines.add(model.active() ? "Modelo ativo" : "Modelo inativo");
             lines.add(variants.size() + " combinações");
-            lines.add("Varejo: " + range(variants.stream().map(VariantView::retailPrice).toList()));
-            lines.add("Lojista: " + range(variants.stream().map(VariantView::wholesalePrice).toList()));
-            if (matching.size() == 1) variants.stream().limit(32).forEach(v -> lines.add(describe(v)
-                + (prices ? " · " + money(v.retailPrice()) + " / " + money(v.wholesalePrice()) : "")));
+            if (prices) {
+                lines.add("Padrões · consumidor final " + money(model.defaultRetailPrice()) + " · lojista " + money(model.defaultWholesalePrice()));
+                model.weightPrices().stream().filter(row -> weights.isEmpty() || weights.contains(row.weight())).limit(32)
+                    .forEach(row -> lines.add(row.weight() + " g · consumidor final " + priceValues(row.retailValues())
+                        + " · lojista " + priceValues(row.wholesaleValues()) + " · " + row.combinations() + " combinações"));
+            } else {
+                lines.add("Varejo: " + range(variants.stream().map(VariantView::retailPrice).toList()));
+                lines.add("Lojista: " + range(variants.stream().map(VariantView::wholesalePrice).toList()));
+                if (matching.size() == 1) variants.stream().limit(32).forEach(v -> lines.add(describe(v)));
+            }
             var action = new Action("nav", prices ? "precos" : "catalogo", prices ? "Abrir tabela de preços" : "Abrir catálogo");
             return new Card(model.name(), lines, List.of(action));
         }).toList();
@@ -112,9 +118,19 @@ class AssistantCatalog {
             var additions = new LinkedHashMap<Key, VariantUpdate>();
             add(additions, weights, colors);
             additions.forEach((key, entry) -> {
-                if (desired.putIfAbsent(key, entry) == null) lines.add("Criar " + key + (initialPrices == null
-                    ? " · sem preços cadastrados" : " · " + money(initialPrices.retailPrice()) + " / " + money(initialPrices.wholesalePrice())));
-                else lines.add("Já cadastrada: " + key);
+                if (desired.putIfAbsent(key, entry) != null) {
+                    lines.add("Já cadastrada: " + key);
+                    return;
+                }
+                var existing = model.weightPrices().stream().filter(row -> row.weight() == key.weight()).findFirst();
+                if (existing.isPresent() && existing.get().divergent()) {
+                    throw invalid("Resolva os preços divergentes de " + key.weight() + " g na tabela de preços antes de adicionar cores.");
+                }
+                var retail = existing.isPresent() ? existing.get().retailPrice()
+                    : initialPrices == null ? model.defaultRetailPrice() : initialPrices.retailPrice();
+                var wholesale = existing.isPresent() ? existing.get().wholesalePrice()
+                    : initialPrices == null ? model.defaultWholesalePrice() : initialPrices.wholesalePrice();
+                lines.add("Criar " + key + " · consumidor final " + money(retail) + " · lojista " + money(wholesale));
             });
             if (desired.size() == model.variants().size()) throw invalid("Todas as combinações informadas já existem.");
         } else if (active != null) {
@@ -148,37 +164,64 @@ class AssistantCatalog {
             }).preview();
     }
 
-    Reply price(Actor actor, String request, boolean wholesale, BigDecimal amount, boolean increase,
-                List<Integer> weights, List<String> colors) {
+    Reply price(Actor actor, String request, boolean wholesale, BigDecimal amount, boolean relative,
+                List<Integer> weights, boolean useDefault) {
         actor.name();
         var products = matching(request);
-        if (products.isEmpty() || amount == null) throw invalid("Informe o modelo, a tabela comercial e o valor.");
-        var before = new LinkedHashMap<Long, VariantPriceUpdate>();
-        var after = new ArrayList<VariantPriceUpdate>();
+        if (products.isEmpty()) throw invalid("Informe o modelo cadastrado.");
+        var updates = new ArrayList<ModelPriceUpdate>();
+        var before = new ArrayList<String>();
         var lines = new ArrayList<String>();
+        int combinations = 0;
         for (var product : products) {
-            for (var variant : product.variants()) {
-                if ((!weights.isEmpty() && !weights.contains(variant.weight())) || (!colors.isEmpty() && !colors.contains(variant.color()))) continue;
-                if (lines.size() == REVIEW_LIMIT) throw invalid("Divida a alteração em propostas de até 100 combinações.");
-                var previous = wholesale ? variant.wholesalePrice() : variant.retailPrice();
-                if (increase && previous == null) throw invalid("Informe um preço final para as combinações sem valor cadastrado.");
-                var value = increase ? previous.add(amount) : amount;
-                before.put(variant.id(), new VariantPriceUpdate(variant.id(), variant.retailPrice(), variant.wholesalePrice()));
-                after.add(new VariantPriceUpdate(variant.id(), wholesale ? variant.retailPrice() : value,
-                    wholesale ? value : variant.wholesalePrice()));
-                lines.add(product.name() + " · " + describe(variant) + ": " + money(previous) + " → " + money(value));
+            var defaults = wholesale ? product.defaultWholesalePrice() : product.defaultRetailPrice();
+            var target = useDefault ? defaults : amount;
+            if (target == null) throw invalid("Informe o valor do preço. A tabela selecionada pode estar sem preço padrão.");
+            var scope = product.weightPrices().stream().filter(row -> weights.isEmpty() || weights.contains(row.weight())).toList();
+            if (scope.isEmpty() || !weights.isEmpty() && scope.size() != weights.size()) {
+                throw invalid("Uma das gramaturas informadas não pertence ao modelo " + product.name() + ".");
             }
+            var weightsToUpdate = new ArrayList<WeightPriceUpdate>();
+            for (var row : scope) {
+                if (lines.size() >= REVIEW_LIMIT) throw invalid("Divida a alteração em propostas menores.");
+                var previous = wholesale ? row.wholesaleValues() : row.retailValues();
+                if (relative && (previous.size() != 1 || previous.getFirst() == null)) {
+                    throw invalid("Informe o preço final para gramaturas com preços indefinidos ou divergentes.");
+                }
+                var value = relative ? previous.getFirst().add(target) : target;
+                var change = tier(wholesale, value);
+                weightsToUpdate.add(new WeightPriceUpdate(row.weight(), change));
+                var title = product.name() + " · " + row.weight() + " g · " + row.combinations() + " combinações";
+                before.add(title + ": " + priceValues(previous));
+                lines.add(title + ": " + priceValues(previous) + " → " + money(value));
+                combinations += row.combinations();
+            }
+            boolean saveDefault = !relative && weights.isEmpty();
+            if (saveDefault) {
+                before.add(product.name() + " · padrão: " + money(defaults));
+                lines.add(product.name() + " · padrão: " + money(defaults) + " → " + money(target));
+            }
+            updates.add(new ModelPriceUpdate(product.id(), product.version(), saveDefault ? tier(wholesale, target) : null, weightsToUpdate));
         }
-        if (after.isEmpty()) throw invalid("Nenhuma combinação corresponde ao pedido.");
-        var prices = new PricesUpdate(List.copyOf(after));
-        validate(prices);
-        lines.add("Os novos valores serão usados nos próximos cálculos. Documentos emitidos conservam os preços originais.");
-        return new Proposal(PRICE_UPDATE, "CATALOGO", after.size() + " combinações",
+        var changes = new WeightPricesUpdate(updates);
+        validate(changes);
+        lines.add("Total afetado: " + combinations + " combinações. Documentos emitidos conservam os preços originais.");
+        String scope = combinations + " combinações";
+        return new Proposal(PRICE_UPDATE, "CATALOGO", scope,
             new Card("Alterar preços de " + (wholesale ? "lojista" : "consumidor final"), lines),
-            before.toString(), prices.toString(), ignored -> {
-                catalog.updatePrices(prices, before, products, null);
-                return new Reply("Preços atualizados em " + after.size() + " combinações.");
+            String.join("\n", before), changes.toString(), ignored -> {
+                catalog.updateWeightPrices(changes, null);
+                return new Reply("Preços atualizados em " + scope + ".");
             }).preview();
+    }
+
+    private static PriceChange tier(boolean wholesale, BigDecimal value) {
+        return new PriceChange(!wholesale, wholesale ? null : value, wholesale, wholesale ? value : null);
+    }
+
+    private static String priceValues(List<BigDecimal> values) {
+        var label = String.join(" / ", values.stream().map(AssistantCatalog::money).toList());
+        return values.size() > 1 ? "Divergente (" + label + ")" : label;
     }
 
     private ProductView single(String question) {

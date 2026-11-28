@@ -1,5 +1,6 @@
 package br.com.urutau.jigs.catalog;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -34,6 +35,12 @@ class CatalogProduct {
     java.time.Instant createdAt;
     java.time.Instant updatedAt;
 
+    @Column(name = "default_retail_price", precision = 12, scale = 2)
+    BigDecimal defaultRetailPrice;
+
+    @Column(name = "default_wholesale_price", precision = 12, scale = 2)
+    BigDecimal defaultWholesalePrice;
+
     @Version
     private long version;
 
@@ -57,8 +64,10 @@ class CatalogProduct {
         return name.strip().toLowerCase(Locale.ROOT);
     }
 
-    void addVariant(int weight, String color, boolean variantActive) {
-        variants.add(new CatalogVariant(this, weight, color, variantActive));
+    CatalogVariant addVariant(int weight, String color, boolean variantActive) {
+        var variant = new CatalogVariant(this, weight, color, variantActive);
+        variants.add(variant);
+        return variant;
     }
 
     long version() { return version; }
