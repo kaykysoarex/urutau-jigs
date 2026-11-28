@@ -31,6 +31,9 @@ class CatalogProduct {
     @Column(nullable = false)
     private boolean active;
 
+    java.time.Instant createdAt;
+    java.time.Instant updatedAt;
+
     @Version
     private long version;
 
@@ -57,6 +60,8 @@ class CatalogProduct {
     void addVariant(int weight, String color, boolean variantActive) {
         variants.add(new CatalogVariant(this, weight, color, variantActive));
     }
+
+    long version() { return version; }
 
     Long id() {
         return id;

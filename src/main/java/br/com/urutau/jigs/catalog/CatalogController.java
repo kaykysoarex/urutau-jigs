@@ -1,6 +1,7 @@
 package br.com.urutau.jigs.catalog;
 
 import java.util.List;
+import java.security.Principal;
 
 import br.com.urutau.jigs.catalog.CatalogDtos.PricesUpdate;
 import br.com.urutau.jigs.catalog.CatalogDtos.ProductUpdate;
@@ -33,19 +34,19 @@ class CatalogController {
 
     @PostMapping("/catalog")
     @ResponseStatus(HttpStatus.CREATED)
-    ProductView create(@Valid @RequestBody ProductUpdate request) {
-        return catalog.create(request);
+    ProductView create(@Valid @RequestBody ProductUpdate request, Principal actor) {
+        return catalog.create(request, actor.getName());
     }
 
     @PutMapping("/catalog/{id}")
-    ProductView update(@PathVariable long id, @Valid @RequestBody ProductUpdate request) {
-        return catalog.update(id, request);
+    ProductView update(@PathVariable long id, @Valid @RequestBody ProductUpdate request, Principal actor) {
+        return catalog.update(id, request, null, actor.getName());
     }
 
     @PutMapping("/catalog/prices")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    void updatePrices(@Valid @RequestBody PricesUpdate request) {
-        catalog.updatePrices(request);
+    void updatePrices(@Valid @RequestBody PricesUpdate request, Principal actor) {
+        catalog.updatePrices(request, null, actor.getName());
     }
 
     @GetMapping("/settings")

@@ -18,7 +18,21 @@ public final class CatalogDtos {
     public record ProductUpdate(
         @NotBlank @Size(max = 120) String name,
         @NotNull Boolean active,
-        @NotNull @Size(max = 2000) List<@NotNull @Valid VariantUpdate> variants
+        @NotNull @Size(max = 2000) List<@NotNull @Valid VariantUpdate> variants,
+        @Valid InitialPrices prices,
+        @jakarta.validation.constraints.PositiveOrZero Long expectedVersion
+    ) {
+        public ProductUpdate(String name, Boolean active, List<VariantUpdate> variants, InitialPrices prices) {
+            this(name, active, variants, prices, null);
+        }
+        public ProductUpdate(String name, Boolean active, List<VariantUpdate> variants) {
+            this(name, active, variants, null, null);
+        }
+    }
+
+    public record InitialPrices(
+        @NotNull @Digits(integer = 10, fraction = 2) @DecimalMin("0.00") BigDecimal retailPrice,
+        @NotNull @Digits(integer = 10, fraction = 2) @DecimalMin("0.00") BigDecimal wholesalePrice
     ) {}
 
     public record VariantUpdate(
@@ -42,7 +56,12 @@ public final class CatalogDtos {
         @NotNull @Positive Integer wholesaleThreshold
     ) {}
 
-    public record ProductView(long id, String name, boolean active, List<VariantView> variants) {}
+    public record ProductView(long id, String name, boolean active, List<VariantView> variants,
+                              java.time.Instant createdAt, java.time.Instant updatedAt, long version) {
+        public ProductView(long id, String name, boolean active, List<VariantView> variants) {
+            this(id, name, active, variants, null, null, 0);
+        }
+    }
 
     public record VariantView(
         long id, int weight, String color, boolean active, BigDecimal retailPrice, BigDecimal wholesalePrice
