@@ -32,10 +32,12 @@ import org.springframework.web.bind.annotation.RestController;
 class QuoteController {
     private final QuoteService quotes;
     private final QuotePdf pdf;
+    private final QuoteDuplication duplication;
 
-    QuoteController(QuoteService quotes, QuotePdf pdf) {
+    QuoteController(QuoteService quotes, QuotePdf pdf, QuoteDuplication duplication) {
         this.quotes = quotes;
         this.pdf = pdf;
+        this.duplication = duplication;
     }
 
     @PostMapping("/preview")
@@ -80,6 +82,14 @@ class QuoteController {
     ResponseEntity<ShareDetails> shareDetails(@PathVariable long number) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(quotes.shareDetails(number));
     }
+
+    @PostMapping("/{number}/duplicate")
+    ResponseEntity<QuoteDuplication.Copied> duplicate(@PathVariable long number, @Valid @RequestBody Duplicate request, Principal actor) {
+        var copy = duplication.duplicate(number, request.id(), actor.getName());
+        return ResponseEntity.status(201).cacheControl(CacheControl.noStore()).body(copy);
+    }
+
+    record Duplicate(@jakarta.validation.constraints.NotNull java.util.UUID id) {}
 
     @GetMapping("/{number}/pdf")
     ResponseEntity<byte[]> pdf(@PathVariable long number, @RequestParam(defaultValue = "false") boolean download) {
