@@ -17,7 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 class AdministrativeAssistant {
-    enum Section { OVERVIEW, MANUAL, AI, HISTORY, ORDERS, CUSTOMERS, CATALOG, PRICES, SETTINGS }
+    enum Section { OVERVIEW, MANUAL, AI, HISTORY, ORDERS, CUSTOMERS, PRODUCTION, CATALOG, PRICES, SETTINGS }
     private static final Pattern MARKS = Pattern.compile("\\p{M}+");
     private static final Pattern WRITE_INTENT = Pattern.compile("(?iu)\\b(?:confirme|cancele|altere|exclua|apague|emita|envie|registre|mude|marque|atualize|execute)\\b");
     private final CatalogService catalog;
@@ -62,6 +62,7 @@ class AdministrativeAssistant {
             case AI -> "Cole a mensagem em Interpretação do pedido, revise os itens identificados e confira o resumo.";
             case HISTORY -> "No Histórico de orçamentos você pode localizar documentos emitidos e visualizar ou baixar o PDF original.";
             case ORDERS -> "Posso consultar quantos orçamentos aguardam confirmação e quantos pedidos estão em produção ou entregues.";
+            case PRODUCTION -> "Consulte a fila FIFO, os prazos comerciais e a lista de fabricação de cada pedido.";
             case CUSTOMERS -> "Em Clientes você pode buscar um cadastro e abrir os históricos de orçamentos e pedidos.";
             case CATALOG -> "Posso listar os modelos ativos e consultar as gramaturas de um modelo do catálogo.";
             case PRICES, SETTINGS -> "Posso consultar o mínimo de lojista e os preços vigentes de um modelo.";

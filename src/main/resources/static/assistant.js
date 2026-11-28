@@ -4,7 +4,7 @@
 const assistantUi = { busy: false, messages: [], frame: 0 };
 const assistantSections = {
   overview: "OVERVIEW", manual: "MANUAL", ai: "AI", history: "HISTORY", orders: "ORDERS",
-  customers: "CUSTOMERS", catalog: "CATALOG", prices: "PRICES", settings: "SETTINGS"
+  customers: "CUSTOMERS", production: "PRODUCTION", catalog: "CATALOG", prices: "PRICES", settings: "SETTINGS"
 };
 
 function assistantHasConversation() {
@@ -88,6 +88,11 @@ async function openAssistantAction({ kind, target }) {
   if (!/^\d+$/u.test(target)) return;
   const id = Number(target);
   if (!Number.isSafeInteger(id) || id < 1) return;
+  if (kind === "production") {
+    history.pushState(null, "", "#producao");
+    await navigate();
+    return showProductionOrder(id);
+  }
   if (kind === "pdf") return showIssuedPdf(id);
   if (kind === "share") return openQuoteShare(id);
   if (kind === "product") {
@@ -126,11 +131,13 @@ async function decideAssistantProposal(proposal, confirm) {
   }
   if (state.route?.page === "history") void loadHistory(0);
   if (state.route?.page === "orders") void loadOrders(0);
+  if (state.route?.page === "production") void refreshProduction(productionUi.page);
   if (state.route?.page === "customers") void loadCustomers(0);
   if (state.route?.page === "manual" || state.route?.page === "ai") void updatePreview();
 }
 
 const assistantSuggestions = {
+  production: ["Qual é o primeiro pedido da fila de produção?", "Quais pedidos em produção vencem hoje?"],
   customers: ["Liste os clientes ativos", "Quais clientes possuem pedidos em produção?"],
   orders: ["Quais pedidos estão em produção?", "Quais pedidos estão atrasados?"],
   catalog: ["Quais modelos estão desativados?", "Mostre a tabela de preços"],
@@ -184,7 +191,7 @@ function positionAssistant() {
     const box = button.getBoundingClientRect();
     if (!box.width) return;
     const xValues = [box.left + 4, box.left + box.width / 2, box.right - 4];
-    const important = "button,a,input,select,textarea,summary,[role='button'],.summary-values,.summary-total,.summary-actions,.sidebar";
+    const important = "button,a,input,select,textarea,summary,[role='button'],.summary-values,.summary-total,.summary-actions,.production-position,.production-demand,.production-card h2,.production-card .order-meta,.production-metrics dd,.sidebar";
     const overlaps = (y) => xValues.some(x => [y + 4, y + box.height / 2, y + box.height - 4].some(point =>
       document.elementsFromPoint(x, point).some(node => node !== button && !button.contains(node) && node.closest(important))));
     for (let offset = 0; box.top - offset >= 64; offset += 20) {

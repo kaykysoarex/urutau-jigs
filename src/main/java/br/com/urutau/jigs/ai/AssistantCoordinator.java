@@ -27,18 +27,20 @@ class AssistantCoordinator {
     private final AssistantDrafts drafts;
     private final AssistantCatalog catalog;
     private final AssistantIndicators indicators;
+    private final AssistantProduction production;
     private final AiConversationService quotesAi;
     private final AdministrativeAssistant guidance;
     private final GeminiInterpreter gemini;
     private final boolean geminiEnabled;
 
     AssistantCoordinator(AssistantCommercial commercial, AssistantDrafts drafts, AssistantCatalog catalog, AssistantIndicators indicators,
-                         AiConversationService quotesAi, AdministrativeAssistant guidance, GeminiInterpreter gemini,
+                         AssistantProduction production, AiConversationService quotesAi, AdministrativeAssistant guidance, GeminiInterpreter gemini,
                          org.springframework.core.env.Environment environment) {
         this.commercial = commercial;
         this.drafts = drafts;
         this.catalog = catalog;
         this.indicators = indicators;
+        this.production = production;
         this.quotesAi = quotesAi;
         this.guidance = guidance;
         this.gemini = gemini;
@@ -65,7 +67,11 @@ class AssistantCoordinator {
             "sem pedir confirmacao")) {
             return new Reply("A assistente opera com ferramentas comerciais autorizadas e confirmação do administrador.");
         }
-        Tool tool = classify(text, section);
+        if (AssistantProduction.asksAboutManufacturedUnits(text)) {
+            return new Reply("O registro de fabricação ainda não está disponível. A fila mostra as iscas demandadas pelos pedidos ativos.");
+        }
+        Tool tool = AssistantProduction.intent(section, text);
+        if (tool == null) tool = classify(text, section);
         if (context.awaiting != null && (tool == null || context.incompleteCatalog != null
                 && !has(text, "quais", "mostre", "cadastre", "crie", "altere", "desative", "reative"))) {
             tool = context.awaiting;
@@ -123,12 +129,12 @@ class AssistantCoordinator {
         var lookup = customer(raw);
         if (lookup == null && (tool == CUSTOMERS || tool == CUSTOMER_HISTORY)) lookup = phone(raw);
         return switch (tool) {
+            case PRODUCTION_QUEUE, PRODUCTION_FIRST, PRODUCTION_DETAILS, PRODUCTION_LINK -> production.answer(actor, tool, raw, text, number);
             case CUSTOMERS -> commercial.customers(actor, lookup == null ? "" : lookup,
                 has(text, "inativ") ? Boolean.FALSE : has(text, " ativos") ? Boolean.TRUE : null);
             case CUSTOMER_HISTORY -> commercial.customerHistory(actor, lookup, context.customer, !has(text, "ultimo orcamento", "orcamentos"));
             case ORDERS, QUOTES -> {
-                if (has(text, "atrasad")) yield indicators.production(actor, true);
-                if (has(text, "clientes") && has(text, "producao")) yield indicators.production(actor, false);
+                if (has(text, "atrasad")) yield production.answer(actor, PRODUCTION_QUEUE, raw, text, number);
                 var status = has(text, "aguardando", "pendente", "nao foram confirmados") ? QuoteDtos.Status.PENDENTE
                     : has(text, "cancelad") ? QuoteDtos.Status.CANCELADO : has(text, "confirmad", "convertid") ? QuoteDtos.Status.CONFIRMADO : null;
                 if (period(text) || !dates(raw).isEmpty() || has(text, "maior valor")) {

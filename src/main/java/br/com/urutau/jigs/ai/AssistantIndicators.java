@@ -142,23 +142,6 @@ class AssistantIndicators {
                     + AssistantCatalog.money(decimal(row.get("total")))), List.of(new Action("order", row.get("id").toString(), "Abrir registro")))).toList());
     }
 
-    @Transactional(readOnly = true)
-    public Reply production(Actor actor, boolean late) {
-        actor.name();
-        var sql = """
-            select q.id, q.client_name, o.number, o.expected_on from commercial_order o
-            join commercial_quote q on q.id = o.quote_id
-            where q.status = 'CONFIRMADO' and o.delivered_at is null
-            """ + (late ? " and o.expected_on < :today" : "") + " order by o.expected_on, o.number limit 12";
-        var statement = jdbc.sql(sql);
-        if (late) statement = statement.param("today", LocalDate.now(clock.withZone(ZONE)));
-        var values = statement.query().listOfRows();
-        return new Reply(values.isEmpty() ? "Nenhum pedido encontrado." : "Até 12 pedidos em produção.",
-            values.stream().map(row -> new Card("Pedido nº " + row.get("number") + " · " + row.get("client_name"),
-                List.of("Prazo: " + (row.get("expected_on") == null ? "a definir" : row.get("expected_on"))),
-                List.of(new Action("order", row.get("id").toString(), "Abrir pedido")))).toList());
-    }
-
     private JdbcClient.StatementSpec query(String sql, Period period) {
         return jdbc.sql(sql).param("start", period.start()).param("end", period.end());
     }
