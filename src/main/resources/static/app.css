@@ -476,6 +476,17 @@ input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--brand); 
 #manual-editor-slot:empty { display: none; }
 #ai-notes { white-space: pre-wrap; overflow-wrap: anywhere; }
 #ai-review-actions:not([hidden]) { margin-top: .85rem; }
+.assistant-suggestions { display: flex; flex-wrap: wrap; gap: .25rem .7rem; padding: .35rem .85rem; }
+.assistant-suggestions button { min-height: 44px; text-align: start; }
+.assistant-card { background: white; border: 1px solid var(--line, #dedede); border-radius: .65rem; padding: .65rem; margin-top: .55rem; min-width: 0; }
+.assistant-card h3 { font-size: 1rem; }
+.assistant-card ul { padding-inline-start: 1.15rem; margin: .4rem 0; overflow-wrap: anywhere; }
+.assistant-card .draft-actions { margin-top: .45rem; }
+.assistant-card .button { min-height: 44px; }
+.catalog-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr)); gap: .75rem; padding: .85rem; }
+.catalog-card { min-width: 0; padding: .85rem; border: 1px solid var(--line, #dedede); border-radius: .75rem; overflow-wrap: anywhere; }
+.catalog-card .draft-actions { margin-top: .55rem; }
+.catalog-price-inputs:not([hidden]) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; margin-block: .8rem; }
 #quote-interpretation .chat-log { min-height: 7rem; max-height: 18rem; overflow-wrap: anywhere; }
 .main-content { padding-bottom: 5rem; }
 @media (min-width: 960px) {

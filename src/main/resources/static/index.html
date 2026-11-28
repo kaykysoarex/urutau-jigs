@@ -291,7 +291,8 @@
           <button id="catalog-new" class="button primary" type="button"><svg class="icon"><use href="/icons.svg#plus"/></svg>Novo modelo</button>
         </div>
         <section class="panel" aria-label="Modelos cadastrados">
-          <div class="panel-toolbar"><label class="field search-field"><span class="sr-only">Buscar modelo</span><svg class="icon" aria-hidden="true"><use href="/icons.svg#search"/></svg><input id="catalog-search" type="search" placeholder="Buscar por nome do modelo" autocomplete="off" enterkeyhint="search"></label></div>
+          <div class="panel-toolbar"><label class="field search-field"><span class="sr-only">Buscar modelo</span><svg class="icon" aria-hidden="true"><use href="/icons.svg#search"/></svg><input id="catalog-search" type="search" placeholder="Buscar por nome do modelo" autocomplete="off" enterkeyhint="search"></label>
+            <label class="field"><span>Estado</span><select id="catalog-status"><option value="">Todos</option><option value="active">Ativos</option><option value="inactive">Inativos</option></select></label></div>
           <div id="catalog-content" aria-live="polite"></div>
         </section>
       </section>
@@ -332,6 +333,7 @@
       </div>
     </header>
     <p id="assistant-context" class="assistant-context"></p>
+    <div id="assistant-suggestions" class="assistant-suggestions" aria-label="Sugestões para a seção"></div>
     <div id="assistant-log" class="chat-log" role="log" aria-label="Conversa administrativa" tabindex="0"></div>
     <form id="assistant-form" class="chat-form">
       <p id="assistant-feedback" role="status"></p>
@@ -462,8 +464,12 @@
       <div class="dialog-heading"><div><h2 id="catalog-dialog-heading">Novo modelo</h2><p>Cadastre as combinações de gramatura e cor da isca.</p></div><button id="catalog-close" class="icon-button" type="button" aria-label="Fechar"><svg class="icon"><use href="/icons.svg#x"/></svg></button></div>
       <div class="dialog-body">
         <div class="catalog-name-line"><label class="field"><span>Nome do modelo <span class="required" aria-hidden="true">*</span></span><input id="catalog-name" maxlength="120" required placeholder="Nome da isca" autocomplete="off" autocapitalize="words"></label><label class="check-field"><input id="catalog-active" type="checkbox" checked>Modelo ativo</label></div>
+        <div id="catalog-initial-prices" class="catalog-price-inputs">
+          <label class="field"><span>Preço consumidor final (R$)</span><input id="catalog-retail" inputmode="decimal" maxlength="14" placeholder="0,00"></label>
+          <label class="field"><span>Preço lojista (R$)</span><input id="catalog-wholesale" inputmode="decimal" maxlength="14" placeholder="0,00"></label>
+        </div>
         <div class="combination-builder">
-          <div class="variant-fields"><label class="field"><span>Gramaturas (g)</span><input id="catalog-weights" placeholder="Ex.: 10, 12" maxlength="120" autocomplete="off" spellcheck="false"></label><label class="field"><span>Códigos das cores</span><input id="catalog-colors" placeholder="Ex.: 01, 03, 07" maxlength="180" autocomplete="off" autocapitalize="characters" spellcheck="false"></label><button id="add-combinations" class="button secondary" type="button"><svg class="icon"><use href="/icons.svg#plus"/></svg>Adicionar</button></div>
+          <div class="variant-fields"><label class="field"><span>Gramaturas (g)</span><input id="catalog-weights" placeholder="Ex.: 10, 12" maxlength="120" autocomplete="off" spellcheck="false"></label><label class="field"><span>Códigos das cores</span><input id="catalog-colors" placeholder="Ex.: 01, 03, 07" maxlength="180" autocomplete="off" autocapitalize="characters" spellcheck="false"></label><button id="add-combinations" class="button secondary" type="button"><svg class="icon"><use href="/icons.svg#plus"/></svg>Gerar prévia</button></div>
           <small>Separe os valores por vírgulas. Cada gramatura será combinada com as cores informadas.</small>
         </div>
         <div id="dialog-variants" class="dialog-variants"></div>

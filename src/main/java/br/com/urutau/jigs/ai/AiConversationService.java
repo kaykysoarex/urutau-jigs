@@ -101,9 +101,18 @@ class AiConversationService {
 
     EditView edit(HttpSession session, UUID id, String message, Workspace workspace) {
         find(session, id);
+        return editDraft(id, message, workspace);
+    }
+
+    EditView editDraft(UUID id, String message, Workspace workspace) {
         var snapshot = catalogSnapshot();
         var byId = new LinkedHashMap<Long, Combination>();
         snapshot.options().forEach((combination, variantId) -> byId.put(variantId, combination));
+        var unavailable = workspace.items().stream().map(item -> item.variantId()).filter(idValue -> !byId.containsKey(idValue)).toList();
+        if (!unavailable.isEmpty()) {
+            catalog.findVariants(unavailable).forEach((variantId, item) ->
+                byId.put(variantId, new Combination(item.model(), item.weight(), item.color())));
+        }
         var current = new LinkedHashMap<Long, ReviewItem>();
         for (var item : workspace.items()) {
             var variant = byId.get(item.variantId());
@@ -174,6 +183,11 @@ class AiConversationService {
         for (var item : edits.items()) {
             var variant = activeCombination(item, revised);
             Long variantId = variant == null ? null : revised.options().get(variant);
+            if (variantId == null && item.quantity() == 0) {
+                variantId = current.values().stream().filter(existing -> existing.model().equalsIgnoreCase(item.model())
+                    && existing.weight() == item.weight() && existing.color().equalsIgnoreCase(item.color()))
+                    .map(ReviewItem::variantId).findFirst().orElse(null);
+            }
             if (variantId == null || !touched.add(variantId) || item.quantity() < 0 || item.quantity() > MAX_ITEM_QUANTITY
                     || (item.quantity() == 0 && !current.containsKey(variantId))) {
                 return unresolved(id, current, workspace.notes(),
@@ -185,7 +199,8 @@ class AiConversationService {
                 changed.put(variantId, new ReviewItem(variantId, variant.model(), variant.weight(), variant.color(), item.quantity()));
             }
         }
-        if (!revised.options().values().containsAll(changed.keySet())) {
+        if (changed.keySet().stream().anyMatch(variant -> snapshot.options().containsValue(variant)
+                && !revised.options().containsValue(variant))) {
             return unresolved(id, current, workspace.notes(),
                 List.of("O catálogo mudou durante a interpretação. Confira os itens e tente novamente."), sanitized);
         }
@@ -272,7 +287,11 @@ class AiConversationService {
 
     private static Combination activeCombination(ProposedItem item, CatalogSnapshot catalog) {
         var model = catalog.models().stream().filter(candidate -> candidate.model().equalsIgnoreCase(item.model()))
-            .findFirst().orElse(null);
+            .findFirst().orElseGet(() -> {
+                String withoutUnits = item.model().replaceFirst("(?iu)^(?:iscas?|unidades?|pe[çc]as?|un\\.?)\\h+(?:de\\h+)?", "");
+                var matches = catalog.models().stream().filter(candidate -> candidate.model().equalsIgnoreCase(withoutUnits)).toList();
+                return matches.size() == 1 ? matches.getFirst() : null;
+            });
         if (model == null) {
             return null;
         }

@@ -1137,6 +1137,25 @@ async function loadHistory(page) {
       const pdfActions = element("div", "history-quote-actions");
       pdfActions.append(pdfLink(record.number, false, true), pdfLink(record.number, true, true), quoteShareButton(record.number, record.clientName));
       pdfActions.append(orderButton("Ver estado comercial", record.number, "detail", true));
+      const duplicate = element("button", "button secondary", "Duplicar");
+      duplicate.type = "button";
+      duplicate.setAttribute("aria-label", `Duplicar orçamento ${quoteNumber(record.number)}`);
+      duplicate.addEventListener("click", async () => {
+        if (duplicate.disabled) return;
+        duplicate.disabled = true;
+        try {
+          duplicate.dataset.requestId ||= generateRequestId();
+          const copy = await api(`/api/quotes/${record.number}/duplicate`, { method: "POST",
+            body: { id: duplicate.dataset.requestId } });
+          toast(copy.unavailable.length ? "Rascunho criado. Revise as combinações indisponíveis." : "Rascunho criado com os preços vigentes.");
+          await openDraft(copy.id);
+        } catch (error) {
+          toast(error.message);
+        } finally {
+          duplicate.disabled = false;
+        }
+      });
+      pdfActions.append(duplicate);
       const status = orderStatusBadge(record.status);
       return [[`Nº ${quoteNumber(record.number)}`, "cell-name"], [record.clientName], [formattedDate(record.createdAt)], [numberFormat.format(record.quantity), "numerical"], [moneyFormat.format(record.total), "numerical"], [status], [pdfActions, "cell-actions"]];
     });
@@ -1171,20 +1190,47 @@ function renderCatalog() {
     return;
   }
   const search = normalizedText(input.value);
-  const products = state.catalog.filter(product => normalizedText(product.name).includes(search));
+  const filter = byId("catalog-status").value;
+  const products = state.catalog.filter(product => normalizedText(product.name).includes(search)
+    && (!filter || product.active === (filter === "active")));
   if (!products.length) {
     content.replaceChildren(emptyState(search ? "Nenhum modelo encontrado" : "Nenhum modelo cadastrado", search ? "Tente buscar por outro nome." : "Cadastre um modelo para disponibilizar iscas no orçamento.", "boxes"));
     return;
   }
-  const rows = products.map(product => {
-    const active = product.variants.filter(variant => variant.active);
-    const weights = [...new Set(active.map(variant => variant.weight))].sort((a, b) => a - b).map(weight => `${weight} g`).join(", ");
-    const colors = new Set(active.map(variant => variant.color)).size;
-    const status = product.active ? element("span", "state-pill active", "Ativo") : element("span", "state-pill", "Inativo");
-    const edit = action(`Editar ${product.name}`, "edit", () => openCatalogEditor(product));
-    return [[product.name, "cell-name"], [weights || "—"], [numberFormat.format(colors), "numerical"], [numberFormat.format(active.length), "numerical"], [status], [edit, "cell-actions"]];
-  });
-  content.replaceChildren(table("Modelos cadastrados", [["Modelo"], ["Gramaturas ativas"], ["Cores", "numerical"], ["Combinações", "numerical"], ["Status"], ["Ações", "cell-actions"]], rows));
+  const priceRange = prices => {
+    const known = prices.filter(value => value != null).map(Number).sort((a, b) => a - b);
+    if (!known.length) return "A definir";
+    return moneyFormat.format(known[0]) + (known[0] === known.at(-1) ? "" : ` a ${moneyFormat.format(known.at(-1))}`)
+      + (known.length < prices.length ? " · há valores a definir" : "");
+  };
+  const cards = element("div", "catalog-cards");
+  for (const product of products) {
+    const variants = product.variants;
+    const card = element("article", "catalog-card");
+    const weights = new Set(variants.map(variant => variant.weight)).size;
+    const colors = new Set(variants.map(variant => variant.color)).size;
+    const tools = element("div", "draft-actions");
+    const edit = element("button", "button secondary", "Editar");
+    edit.type = "button";
+    edit.setAttribute("aria-label", `Editar ${product.name}`);
+    edit.addEventListener("click", () => openCatalogEditor(product));
+    const prices = element("button", "button secondary", "Preços");
+    prices.type = "button";
+    prices.addEventListener("click", () => {
+      history.pushState(null, "", "#precos");
+      void navigate().then(() => {
+        byId("price-model").value = String(product.id);
+        renderPrices();
+      });
+    });
+    tools.append(edit, prices);
+    card.append(element("h2", "", product.name), element("span", `state-pill${product.active ? " active" : ""}`, product.active ? "Ativo" : "Inativo"),
+      element("p", "", `${weights} gramaturas · ${colors} cores · ${variants.length} combinações`),
+      element("p", "", `Consumidor final: ${priceRange(variants.map(variant => variant.retailPrice))}`),
+      element("p", "", `Lojista: ${priceRange(variants.map(variant => variant.wholesalePrice))}`), tools);
+    cards.append(card);
+  }
+  content.replaceChildren(cards);
 }
 
 function openCatalogEditor(product = null) {
@@ -1195,6 +1241,11 @@ function openCatalogEditor(product = null) {
   byId("catalog-active").checked = product?.active ?? true;
   byId("catalog-weights").value = "";
   byId("catalog-colors").value = "";
+  byId("catalog-initial-prices").hidden = Boolean(product);
+  for (const id of ["catalog-retail", "catalog-wholesale"]) {
+    byId(id).value = "";
+    byId(id).required = !product;
+  }
   formFeedback("catalog-error", "");
   renderCatalogVariants();
   byId("catalog-dialog").showModal();
@@ -1232,7 +1283,8 @@ function addCombinations() {
   const colorField = byId("catalog-colors");
   const weightsText = weightField.value.split(/[,;\s]+/u).filter(Boolean);
   const weights = [...new Set(weightsText.map(Number))];
-  const colors = [...new Set(colorField.value.toUpperCase().split(/[,;\s]+/u).filter(Boolean))];
+  const colors = [...new Set(colorField.value.toUpperCase().split(/[,;\s]+/u).filter(Boolean)
+    .map(code => /^\d$/u.test(code) ? code.padStart(2, "0") : code))];
   if (!weights.length || !colors.length || weightsText.some(weight => !/^\d+$/u.test(weight)) || weights.some(weight => !Number.isInteger(weight) || weight < 1 || weight > 2147483647)) {
     formFeedback("catalog-error", "Informe pelo menos uma gramatura inteira positiva e um código de cor.");
     return false;
@@ -1245,7 +1297,7 @@ function addCombinations() {
   for (const weight of weights) {
     for (const color of colors) {
       const variant = { weight, color, active: true };
-      entries.set(keyForVariant(variant), variant);
+      if (!entries.has(keyForVariant(variant))) entries.set(keyForVariant(variant), variant);
       if (entries.size > 2000) {
         formFeedback("catalog-error", "Cada modelo admite até 2.000 combinações.");
         return false;
@@ -1269,7 +1321,10 @@ function setCatalogSaving(saving) {
 async function saveProduct(event) {
   event.preventDefault();
   if (state.catalogSaving) return;
-  if ((byId("catalog-weights").value.trim() || byId("catalog-colors").value.trim()) && !addCombinations()) return;
+  if (byId("catalog-weights").value.trim() || byId("catalog-colors").value.trim()) {
+    formFeedback("catalog-error", "Gere e revise a prévia das novas combinações antes de salvar.");
+    return;
+  }
   const name = byId("catalog-name").value.trim();
   const active = byId("catalog-active").checked;
   const model = state.catalogModel;
@@ -1280,7 +1335,16 @@ async function saveProduct(event) {
   formFeedback("catalog-error", "");
   setCatalogSaving(true);
   try {
-    await api(model ? `/api/catalog/${model.id}` : "/api/catalog", { method: model ? "PUT" : "POST", body: { name, active, variants: state.catalogVariants } });
+    const prices = model ? null : {
+      retailPrice: normalizeMoney(byId("catalog-retail").value),
+      wholesalePrice: normalizeMoney(byId("catalog-wholesale").value)
+    };
+    if (!model && (!prices.retailPrice || !prices.wholesalePrice || !state.catalogVariants.length)) {
+      throw new Error("Informe os dois preços e inclua pelo menos uma combinação.");
+    }
+    await api(model ? `/api/catalog/${model.id}` : "/api/catalog", {
+      method: model ? "PUT" : "POST", body: { name, active, variants: state.catalogVariants, prices, expectedVersion: model?.version ?? null }
+    });
     byId("catalog-dialog").close();
     toast(model ? "Modelo atualizado." : "Modelo cadastrado.");
     await loadCatalog();
@@ -1738,6 +1802,7 @@ function bindEvents() {
   });
   byId("quote-issue").addEventListener("click", () => void issueQuote());
   byId("catalog-search").addEventListener("input", renderCatalog);
+  byId("catalog-status").addEventListener("change", renderCatalog);
   byId("catalog-new").addEventListener("click", () => openCatalogEditor());
   ["catalog-close", "catalog-cancel"].forEach(id => byId(id).addEventListener("click", () => byId("catalog-dialog").close()));
   byId("catalog-dialog").addEventListener("cancel", event => { if (state.catalogSaving) event.preventDefault(); });

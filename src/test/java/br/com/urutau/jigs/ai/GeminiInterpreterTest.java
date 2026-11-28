@@ -124,6 +124,24 @@ class GeminiInterpreterTest {
     }
 
     @Test
+    void acceptsOnlyTheRegisteredAdministrativeIntentWithoutParameters() throws Exception {
+        respond(200, completed("STOP", List.of(Map.of("text", "{\"tool\":\"CUSTOMERS\"}"))));
+        assertThat(interpreter.classifyAdministrativeIntent("recuperar relacao compradores cadastrados", "OVERVIEW"))
+            .isEqualTo(AssistantTools.Tool.CUSTOMERS);
+
+        var request = ArgumentCaptor.forClass(HttpRequest.class);
+        verify(http).send(request.capture(), ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
+        assertThat(requestBody(request.getValue())).contains("CUSTOMERS", "additionalProperties", "recuperar relacao compradores")
+            .doesNotContain("example-api-key");
+        respond(200, completed("STOP", List.of(Map.of("text", "{\"tool\":\"SQL\"}"))));
+        assertThatThrownBy(() -> interpreter.classifyAdministrativeIntent("relacao clientes", "CUSTOMERS"))
+            .isInstanceOf(ResponseStatusException.class).hasMessageContaining("503");
+        respond(200, completed("STOP", List.of(Map.of("text", "{\"tool\":\"CUSTOMER_CREATE\",\"name\":\"alterado\"}"))));
+        assertThatThrownBy(() -> interpreter.classifyAdministrativeIntent("relacao clientes", "CUSTOMERS"))
+            .isInstanceOf(ResponseStatusException.class).hasMessageContaining("503");
+    }
+
+    @Test
     void refusesMissingCredentialsAndInvalidModelPathWithoutNetworkCall() {
         var missingKey = new GeminiInterpreter(() -> http, json, "  ", "gemini-3.5-flash-lite");
         var unsafeModel = new GeminiInterpreter(() -> http, json, "example-api-key", "gemini-3.5/../../other");

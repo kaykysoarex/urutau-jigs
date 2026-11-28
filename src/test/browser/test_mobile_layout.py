@@ -20,7 +20,7 @@ ROUTES = {
     "manual": "#item-model:not(:disabled)",
     "ai": "#chat-message:not(:disabled)",
     "history": "#history-content tbody tr",
-    "catalog": "#catalog-content tbody tr",
+    "catalog": "#catalog-content .catalog-card, #catalog-content tbody tr",
     "prices": "#price-content tbody tr input",
     "settings": "#settings-threshold:not(:disabled)",
 }

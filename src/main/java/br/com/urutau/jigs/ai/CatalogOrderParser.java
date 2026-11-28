@@ -25,7 +25,7 @@ final class CatalogOrderParser {
         "(?iu)^" + QUANTITY_PREFIX + "[+-]?[0-9.,]+\\h*" + COUNT_LABEL + "?[.!]?$");
     private static final Pattern MISSING_AMOUNT = Pattern.compile("(?iu)^" + QUANTITY_PREFIX + "$");
     private static final Pattern ADD = Pattern.compile(
-        "(?iu)^\\s*(?:adicione|acrescente|inclua)\\h+(" + INTEGER + ")\\h+(?:" + UNIT + "\\h+(?:de\\h+)?)?"
+        "(?iu)^\\s*(?:adicione|acrescente|inclua)\\h+(" + INTEGER + ")\\h+"
         + "([^|\\r\\n]{1,120}?)\\h+(?:de\\h+)?([0-9]+\\h*(?:g|gr\\.?|gramas?))"
         + "\\h+(?:(?:na|da|com\\h+a)\\h+)?cor\\h+([a-z0-9][a-z0-9-]{0,15})[.!]?\\s*$");
     private static final Pattern TOTAL = Pattern.compile(
